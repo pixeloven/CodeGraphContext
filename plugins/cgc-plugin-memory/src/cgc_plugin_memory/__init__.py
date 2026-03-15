@@ -1,5 +1,8 @@
 """Memory plugin for CodeGraphContext — stores and searches project knowledge in the graph."""
 
+from cgc_plugin_memory.cli import get_plugin_commands
+from cgc_plugin_memory.mcp_tools import get_mcp_handlers, get_mcp_tools
+
 PLUGIN_METADATA = {
     "name": "cgc-plugin-memory",
     "version": "0.1.0",

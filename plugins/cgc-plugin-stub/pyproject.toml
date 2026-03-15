@@ -21,10 +21,10 @@ dev = [
 ]
 
 [project.entry-points."cgc_cli_plugins"]
-stub = "cgc_plugin_stub.cli:get_plugin_commands"
+stub = "cgc_plugin_stub"
 
 [project.entry-points."cgc_mcp_plugins"]
-stub = "cgc_plugin_stub.mcp_tools:get_mcp_tools"
+stub = "cgc_plugin_stub"
 
 [tool.setuptools.packages.find]
 where = ["src"]

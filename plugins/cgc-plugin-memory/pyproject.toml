@@ -25,10 +25,10 @@ dev = [
 ]
 
 [project.entry-points."cgc_cli_plugins"]
-memory = "cgc_plugin_memory.cli:get_plugin_commands"
+memory = "cgc_plugin_memory"
 
 [project.entry-points."cgc_mcp_plugins"]
-memory = "cgc_plugin_memory.mcp_tools:get_mcp_tools"
+memory = "cgc_plugin_memory"
 
 [tool.setuptools.packages.find]
 where = ["src"]

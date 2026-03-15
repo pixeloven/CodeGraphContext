@@ -25,10 +25,10 @@ dev = [
 ]
 
 [project.entry-points."cgc_cli_plugins"]
-xdebug = "cgc_plugin_xdebug.cli:get_plugin_commands"
+xdebug = "cgc_plugin_xdebug"
 
 [project.entry-points."cgc_mcp_plugins"]
-xdebug = "cgc_plugin_xdebug.mcp_tools:get_mcp_tools"
+xdebug = "cgc_plugin_xdebug"
 
 [tool.setuptools.packages.find]
 where = ["src"]

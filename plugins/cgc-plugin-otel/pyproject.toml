@@ -30,10 +30,10 @@ dev = [
 ]
 
 [project.entry-points."cgc_cli_plugins"]
-otel = "cgc_plugin_otel.cli:get_plugin_commands"
+otel = "cgc_plugin_otel"
 
 [project.entry-points."cgc_mcp_plugins"]
-otel = "cgc_plugin_otel.mcp_tools:get_mcp_tools"
+otel = "cgc_plugin_otel"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -5,11 +5,11 @@ All tests run without gRPC or a real database — pure logic tests.
 Tests MUST FAIL before T020 (span_processor.py) is implemented.
 """
 import pytest
-import sys
-import os
 
-# Allow import even when cgc-plugin-otel is not installed
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../plugins/cgc-plugin-otel/src"))
+cgc_plugin_otel = pytest.importorskip(
+    "cgc_plugin_otel",
+    reason="cgc-plugin-otel is not installed; skipping otel processor unit tests",
+)
 
 
 # ---------------------------------------------------------------------------

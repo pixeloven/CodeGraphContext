@@ -10,14 +10,26 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      falkordb:
+        image: falkordb/falkordb:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Check out code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+        cache: 'pip'
 
     - name: Install dependencies
       run: |
@@ -26,6 +38,10 @@ jobs:
         pip install pytest
 
     - name: Run end-to-end tests
+      env:
+        FALKORDB_HOST: localhost
+        FALKORDB_PORT: 6379
+        DATABASE_TYPE: falkordb-remote
       run: |
         chmod +x tests/run_tests.sh
         ./tests/run_tests.sh e2e

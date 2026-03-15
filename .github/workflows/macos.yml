@@ -19,9 +19,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install system deps
+        continue-on-error: true
         run: |
           brew update
-          brew install ripgrep || true
+          brew install ripgrep
 
       - name: Install CodeGraphContext
         run: |
@@ -35,12 +36,14 @@ jobs:
           df -h
 
       - name: Run index (verbose)
+        continue-on-error: true
         run: |
-          cgc index -f --debug || true
+          cgc index -f --debug
 
       - name: Try find
+        continue-on-error: true
         run: |
-          cgc find content "def" --debug || true
+          cgc find content "def" --debug
 
       - name: Upload logs
         if: always()

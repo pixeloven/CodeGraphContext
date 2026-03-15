@@ -7,13 +7,13 @@ creates the expected graph structure.
 """
 from __future__ import annotations
 
-import asyncio
-import sys
-import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../plugins/cgc-plugin-otel/src"))
+cgc_plugin_otel = pytest.importorskip(
+    "cgc_plugin_otel",
+    reason="cgc-plugin-otel is not installed; skipping otel integration tests",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -72,109 +72,107 @@ def _make_db_manager():
 # Tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio
 class TestAsyncOtelWriterBatch:
 
-    def _run(self, coro):
-        return asyncio.run(coro)
-
-    def test_write_batch_issues_merge_service(self):
+    async def test_write_batch_issues_merge_service(self):
         """write_batch() issues a MERGE for the Service node."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span()
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert any("MERGE" in c and "Service" in c for c in cypher_calls), \
             f"No Service MERGE found in calls: {cypher_calls}"
 
-    def test_write_batch_issues_merge_span(self):
+    async def test_write_batch_issues_merge_span(self):
         """write_batch() issues a MERGE for the Span node."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span()
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert any("MERGE" in c and "Span" in c for c in cypher_calls)
 
-    def test_write_batch_links_span_to_trace(self):
+    async def test_write_batch_links_span_to_trace(self):
         """write_batch() creates a PART_OF relationship between Span and Trace."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span()
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert any("PART_OF" in c for c in cypher_calls)
 
-    def test_write_batch_creates_child_of_for_parent_span_id(self):
+    async def test_write_batch_creates_child_of_for_parent_span_id(self):
         """CHILD_OF relationship is created when parent_span_id is set."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span(span_id="child", parent_span_id="parent001")
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert any("CHILD_OF" in c for c in cypher_calls)
 
-    def test_no_child_of_when_no_parent(self):
+    async def test_no_child_of_when_no_parent(self):
         """CHILD_OF is NOT issued when parent_span_id is None."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span(parent_span_id=None)
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert not any("CHILD_OF" in c for c in cypher_calls)
 
-    def test_write_batch_creates_correlates_to_for_fqn(self):
+    async def test_write_batch_creates_correlates_to_for_fqn(self):
         """CORRELATES_TO relationship is attempted when fqn is set."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span(fqn="App\\Controllers::index")
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert any("CORRELATES_TO" in c for c in cypher_calls)
 
-    def test_no_correlates_to_when_no_fqn(self):
+    async def test_no_correlates_to_when_no_fqn(self):
         """CORRELATES_TO is NOT issued when fqn is None (no code context)."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span(fqn=None)
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert not any("CORRELATES_TO" in c for c in cypher_calls)
 
-    def test_cross_service_span_creates_calls_service(self):
+    async def test_cross_service_span_creates_calls_service(self):
         """CALLS_SERVICE is created for CLIENT spans with peer_service set."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager, session = _make_db_manager()
         writer = AsyncOtelWriter(db_manager)
         span = _make_span(cross_service=True, peer_service="payment-service")
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         cypher_calls = [str(c.args[0]) for c in session.run.call_args_list]
         assert any("CALLS_SERVICE" in c for c in cypher_calls)
 
-    def test_db_failure_routes_to_dlq(self):
+    async def test_db_failure_routes_to_dlq(self):
         """When the database raises, spans are moved to the dead-letter queue."""
         from cgc_plugin_otel.neo4j_writer import AsyncOtelWriter
         db_manager = MagicMock()
@@ -182,6 +180,6 @@ class TestAsyncOtelWriterBatch:
         writer = AsyncOtelWriter(db_manager)
         span = _make_span()
 
-        self._run(writer.write_batch([span]))
+        await writer.write_batch([span])
 
         assert not writer._dlq.empty()

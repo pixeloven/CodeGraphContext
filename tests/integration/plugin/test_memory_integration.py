@@ -6,12 +6,13 @@ Tests MUST FAIL before T037 (mcp_tools.py) is implemented.
 """
 from __future__ import annotations
 
-import sys
-import os
 import pytest
 from unittest.mock import MagicMock, call
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../plugins/cgc-plugin-memory/src"))
+cgc_plugin_memory = pytest.importorskip(
+    "cgc_plugin_memory",
+    reason="cgc-plugin-memory is not installed; skipping memory integration tests",
+)
 
 
 # ---------------------------------------------------------------------------

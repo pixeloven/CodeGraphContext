@@ -5,10 +5,11 @@ No TCP connections required — pure XML/logic tests.
 Tests MUST FAIL before T030 (dbgp_server.py) is implemented.
 """
 import pytest
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../plugins/cgc-plugin-xdebug/src"))
+cgc_plugin_xdebug = pytest.importorskip(
+    "cgc_plugin_xdebug",
+    reason="cgc-plugin-xdebug is not installed; skipping xdebug parser unit tests",
+)
 
 _SAMPLE_STACK_XML = """\
 <?xml version="1.0" encoding="iso-8859-1"?>

@@ -32,7 +32,7 @@ jobs:
       - name: Install core CGC (no extras) and dev dependencies
         run: |
           pip install --no-cache-dir packaging pytest pytest-mock
-          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir packaging pytest pytest-mock
+          pip install --no-cache-dir -e ".[dev]"
 
       - name: Install stub plugin (editable)
         run: pip install --no-cache-dir -e plugins/cgc-plugin-stub

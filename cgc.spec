@@ -5,7 +5,7 @@
 import sys
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all, collect_entry_point
 
 block_cipher = None
 
@@ -138,13 +138,46 @@ hidden_imports = [
     'httpx',
     'httpcore',
     'importlib',
+    'importlib.metadata',
+    'importlib.metadata._meta',
+    'importlib.metadata._adapters',
+    'importlib.metadata._itertools',
+    'importlib.metadata._functools',
+    'importlib.metadata._text',
     'asyncio',
     'pkg_resources',
+    'pkg_resources.extern',
     'threading',
     'subprocess',
     'socket',
     'atexit',
+    # plugin_registry.py discovers plugins via importlib.metadata.entry_points();
+    # each installed plugin's distribution metadata must be bundled so that
+    # entry_points(group=...) resolves correctly in a frozen executable.
+    'codegraphcontext.plugin_registry',
 ]
+
+# ── Plugin entry-point metadata collection ────────────────────────────────
+# PyInstaller cannot discover entry points at freeze time unless the
+# distribution METADATA / entry_points.txt files are explicitly copied into
+# the bundle.  collect_entry_point() returns (datas, hidden_imports) for
+# every distribution that declares the requested group.
+_plugin_ep_groups = ['cgc_cli_plugins', 'cgc_mcp_plugins']
+for _ep_group in _plugin_ep_groups:
+    try:
+        _ep_datas, _ep_hidden = collect_entry_point(_ep_group)
+        datas += _ep_datas
+        hidden_imports += _ep_hidden
+    except Exception as _ep_exc:
+        print(f"Warning: collect_entry_point('{_ep_group}') failed: {_ep_exc}")
+
+# Bundle the codegraphcontext distribution metadata so that
+# importlib.metadata.version("codegraphcontext") resolves in the frozen binary
+# and PluginRegistry._get_cgc_version() returns the correct version string.
+try:
+    datas += collect_data_files('codegraphcontext', includes=['**/*.dist-info/**/*'])
+except Exception as _cgc_meta_exc:
+    print(f"Warning: collect_data_files('codegraphcontext') failed: {_cgc_meta_exc}")
 
 
 # Bin extensions by platform
@@ -267,9 +300,9 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hidden_imports,
-    hookspath=[],
+    hookspath=['pyinstaller_hooks'],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['pyinstaller_hooks/rthook_importlib_metadata.py'],
     excludes=[
         'tkinter', '_tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy',
         'PIL', 'cv2', 'torch', 'tensorflow', 'jupyter', 'notebook', 'IPython',

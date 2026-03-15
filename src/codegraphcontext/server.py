@@ -32,6 +32,7 @@ from .tools.handlers import (
     query_handlers,
     watcher_handlers
 )
+from .plugin_registry import PluginRegistry
 
 DEFAULT_EDIT_DISTANCE = 2
 DEFAULT_FUZZY_SEARCH = False
@@ -86,9 +87,33 @@ class MCPServer:
 
     def _init_tools(self):
         """
-        Defines the complete tool manifest for the LLM.
+        Defines the complete tool manifest for the LLM, including plugin tools.
         """
-        self.tools = TOOLS
+        self.tools = dict(TOOLS)  # mutable copy
+
+        server_context = {
+            "db_manager": self.db_manager,
+            "version": self._get_version(),
+        }
+
+        plugin_registry = PluginRegistry()
+        plugin_registry.discover_mcp_plugins(server_context)
+
+        self.plugin_tool_handlers: Dict[str, Any] = {}
+        for tool_name, tool_def in plugin_registry.mcp_tools.items():
+            if tool_name in self.tools:
+                continue  # built-in tools take precedence
+            self.tools[tool_name] = tool_def
+            if tool_name in plugin_registry.mcp_handlers:
+                self.plugin_tool_handlers[tool_name] = plugin_registry.mcp_handlers[tool_name]
+
+    @staticmethod
+    def _get_version() -> str:
+        try:
+            from importlib.metadata import version
+            return version("codegraphcontext")
+        except Exception:
+            return "0.0.0"
 
     def get_database_status(self) -> dict:
         """Returns the current connection status of the Neo4j database."""
@@ -204,8 +229,13 @@ class MCPServer:
             # Run the synchronous tool function in a separate thread to avoid
             # blocking the main asyncio event loop.
             return await asyncio.to_thread(handler, **args)
-        else:
-            return {"error": f"Unknown tool: {tool_name}"}
+
+        # Fall through to plugin handlers
+        plugin_handler = self.plugin_tool_handlers.get(tool_name)
+        if plugin_handler:
+            return await asyncio.to_thread(plugin_handler, **args)
+
+        return {"error": f"Unknown tool: {tool_name}"}
 
     async def run(self):
         """

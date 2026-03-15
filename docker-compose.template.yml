@@ -41,24 +41,32 @@ services:
       - falkordb
 
   # Optional: Neo4j database (if you prefer Neo4j over FalkorDB)
+  # Required when using any CGC plugin (otel, memory, xdebug).
   neo4j:
     image: neo4j:5.15.0
     container_name: cgc-neo4j
     ports:
-      - "7474:7474"  # HTTP
+      - "7474:7474"  # HTTP Browser
       - "7687:7687"  # Bolt
     environment:
-      - NEO4J_AUTH=neo4j/codegraph123
+      - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-codegraph123}
       - NEO4J_PLUGINS=["apoc"]
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_memory_heap_max__size=2G
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
+      - ./config/neo4j/init.cypher:/docker-entrypoint-initdb.d/init.cypher:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     networks:
       - cgc-network
     profiles:
-      - neo4j  # Only start when explicitly requested
+      - neo4j  # Start with: docker compose --profile neo4j up
 
 volumes:
   cgc-data:

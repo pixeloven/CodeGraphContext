@@ -15,6 +15,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
+    "packaging>=23.0",
     "neo4j>=5.15.0",
     "watchdog>=3.0.0",
     "stdlibs>=2023.11.18",
@@ -44,6 +45,21 @@ dev = [
     "pytest>=7.4.0",
     "black>=23.11.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.11.0",
+]
+otel = [
+    "cgc-plugin-otel>=0.1.0",
+]
+xdebug = [
+    "cgc-plugin-xdebug>=0.1.0",
+]
+memory = [
+    "cgc-plugin-memory>=0.1.0",
+]
+all = [
+    "cgc-plugin-otel>=0.1.0",
+    "cgc-plugin-xdebug>=0.1.0",
+    "cgc-plugin-memory>=0.1.0",
 ]
 
 [project.urls]

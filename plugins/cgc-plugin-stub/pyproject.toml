@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cgc-plugin-stub"
+version = "0.1.0"
+description = "Minimal stub plugin for testing the CGC plugin system"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "CodeGraphContext Contributors" }
+]
+dependencies = [
+    "typer[all]>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+]
+
+[project.entry-points."cgc_cli_plugins"]
+stub = "cgc_plugin_stub.cli:get_plugin_commands"
+
+[project.entry-points."cgc_mcp_plugins"]
+stub = "cgc_plugin_stub.mcp_tools:get_mcp_tools"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cgc_plugin_stub*"]

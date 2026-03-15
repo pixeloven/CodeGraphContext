@@ -24,6 +24,7 @@ from importlib.metadata import version as pkg_version, PackageNotFoundError
 
 from codegraphcontext.server import MCPServer
 from codegraphcontext.core.database import DatabaseManager
+from codegraphcontext.plugin_registry import PluginRegistry
 from .setup_wizard import run_neo4j_setup_wizard, configure_mcp_client
 from . import config_manager
 # Import the new helper functions
@@ -101,6 +102,58 @@ def get_version() -> str:
 # Create MCP command group
 mcp_app = typer.Typer(help="MCP client configuration commands")
 app.add_typer(mcp_app, name="mcp")
+
+# ---------------------------------------------------------------------------
+# Plugin CLI integration
+# ---------------------------------------------------------------------------
+
+_plugin_registry: PluginRegistry | None = None
+
+plugin_app = typer.Typer(help="Manage CGC plugins.")
+app.add_typer(plugin_app, name="plugin")
+
+
+@plugin_app.command("list")
+def plugin_list():
+    """Show all loaded and failed plugins."""
+    global _plugin_registry
+    if _plugin_registry is None:
+        console.print("[yellow]Plugin registry not initialised.[/yellow]")
+        return
+
+    table = Table(title="CGC Plugins", box=box.SIMPLE)
+    table.add_column("Name", style="cyan")
+    table.add_column("Status", style="bold")
+    table.add_column("Version")
+    table.add_column("Tools / Command")
+    table.add_column("Reason", style="dim")
+
+    for name, info in _plugin_registry.loaded_plugins.items():
+        meta = info.get("metadata", {})
+        version = meta.get("version", "?")
+        tools = ", ".join(info.get("mcp_tools", []))
+        cmd = info.get("cli_command", "")
+        detail = tools or cmd or "—"
+        table.add_row(name, "[green]loaded[/green]", version, detail, "")
+
+    for name, reason in _plugin_registry.failed_plugins.items():
+        table.add_row(name, "[red]failed[/red]", "—", "—", reason)
+
+    console.print(table)
+
+
+def _load_plugin_cli_commands(registry: PluginRegistry) -> None:
+    """Attach plugin-contributed Typer command groups to the root app."""
+    global _plugin_registry
+    _plugin_registry = registry
+    for cmd_name, typer_app in registry.cli_commands:
+        app.add_typer(typer_app, name=cmd_name)
+
+
+# Discover and register plugin CLI commands at import time.
+_registry = PluginRegistry()
+_registry.discover_cli_plugins()
+_load_plugin_cli_commands(_registry)
 
 @mcp_app.command("setup")
 def mcp_setup():

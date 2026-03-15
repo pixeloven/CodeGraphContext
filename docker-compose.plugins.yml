@@ -1,0 +1,86 @@
+# Plugin services overlay — OTEL collector/processor + Memory MCP server.
+#
+# NOTE: For local development, prefer docker-compose.plugin-stack.yml which is
+# self-contained and includes Neo4j with a healthcheck.
+#
+# Usage (overlay on plugin-stack — recommended for adding to existing stack):
+#   # Already included in docker-compose.plugin-stack.yml
+#
+# Usage (overlay on core template — requires neo4j profile active):
+#   docker compose -f docker-compose.template.yml --profile neo4j -f docker-compose.plugins.yml up
+#
+# Prerequisites:
+#   - neo4j service running with healthcheck (docker-compose.plugin-stack.yml provides this)
+#   - NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD set in .env
+#   - DOMAIN set to your ingress domain (e.g. localhost)
+
+version: '3.8'
+
+services:
+
+  # ── OpenTelemetry Collector ───────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: cgc-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - cgc-otel-processor
+    networks:
+      - cgc-network
+    restart: unless-stopped
+
+  # ── CGC OTEL Processor (receives from collector, writes to Neo4j) ─────────
+  cgc-otel-processor:
+    build:
+      context: plugins/cgc-plugin-otel
+      dockerfile: Dockerfile
+    container_name: cgc-otel-processor
+    environment:
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - OTEL_RECEIVER_PORT=${OTEL_RECEIVER_PORT:-5317}
+      - OTEL_FILTER_ROUTES=${OTEL_FILTER_ROUTES:-/health,/metrics,/ping}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "5317:5317"   # internal gRPC (collector → processor)
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.otel.rule=Host(`otel.${DOMAIN:-localhost}`)"
+
+  # ── CGC Memory MCP server ─────────────────────────────────────────────────
+  cgc-memory:
+    build:
+      context: plugins/cgc-plugin-memory
+      dockerfile: Dockerfile
+    container_name: cgc-memory
+    environment:
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
+      - CGC_MEMORY_HOST=${CGC_MEMORY_HOST:-0.0.0.0}
+      - CGC_MEMORY_PORT=${CGC_MEMORY_PORT:-8766}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8766:8766"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.memory.rule=Host(`memory.${DOMAIN:-localhost}`)"

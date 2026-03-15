@@ -1,0 +1,159 @@
+# Full CGC plugin stack — self-contained for local development and manual testing.
+#
+# Includes: Neo4j + CGC core + OTEL collector + OTEL processor + Memory plugin.
+# Add Xdebug listener with: -f docker-compose.dev.yml
+#
+# Quick start:
+#   cp .env.example .env          # edit NEO4J_PASSWORD at minimum
+#   docker compose -f docker-compose.plugin-stack.yml up -d
+#   docker compose -f docker-compose.plugin-stack.yml logs -f
+#
+# With Xdebug (dev):
+#   docker compose -f docker-compose.plugin-stack.yml -f docker-compose.dev.yml up -d
+#
+# Verify:
+#   docker compose -f docker-compose.plugin-stack.yml ps
+#   curl -s http://localhost:7474              # Neo4j Browser
+#   grpcurl -plaintext localhost:4317 list    # OTEL gRPC endpoint (needs grpcurl)
+
+version: '3.8'
+
+services:
+
+  # ── Neo4j graph database ───────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5.15.0
+    container_name: cgc-neo4j
+    ports:
+      - "7474:7474"   # Browser: http://localhost:7474
+      - "7687:7687"   # Bolt
+    environment:
+      - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-codegraph123}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_memory_heap_max__size=2G
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - ./config/neo4j/init.cypher:/docker-entrypoint-initdb.d/init.cypher:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - cgc-network
+    restart: unless-stopped
+
+  # ── CGC core MCP server ────────────────────────────────────────────────────
+  cgc-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cgc-core
+    environment:
+      - DATABASE_TYPE=neo4j
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./:/workspace
+      - cgc-data:/root/.codegraphcontext
+    stdin_open: true
+    tty: true
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped
+
+  # ── OpenTelemetry Collector ────────────────────────────────────────────────
+  # Receives spans from your application (ports 4317 gRPC, 4318 HTTP),
+  # filters noise, and forwards to cgc-otel-processor.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: cgc-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC — point your app here
+      - "4318:4318"   # OTLP HTTP — alternative ingestion
+    depends_on:
+      - cgc-otel-processor
+    networks:
+      - cgc-network
+    restart: unless-stopped
+
+  # ── CGC OTEL Processor ────────────────────────────────────────────────────
+  # Receives filtered spans from collector, writes Service/Trace/Span nodes
+  # to Neo4j and correlates them to static Method nodes.
+  cgc-otel-processor:
+    build:
+      context: plugins/cgc-plugin-otel
+      dockerfile: Dockerfile
+    container_name: cgc-otel-processor
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - OTEL_RECEIVER_PORT=${OTEL_RECEIVER_PORT:-5317}
+      - OTEL_FILTER_ROUTES=${OTEL_FILTER_ROUTES:-/health,/metrics,/ping}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "5317:5317"   # Internal gRPC (collector → processor; not exposed to app)
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import grpc; print('ok')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── CGC Memory MCP server ─────────────────────────────────────────────────
+  # Stores and retrieves project knowledge (specs, notes, ADRs) linked to
+  # static code nodes in the graph.
+  cgc-memory:
+    build:
+      context: plugins/cgc-plugin-memory
+      dockerfile: Dockerfile
+    container_name: cgc-memory
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
+      - CGC_MEMORY_HOST=${CGC_MEMORY_HOST:-0.0.0.0}
+      - CGC_MEMORY_PORT=${CGC_MEMORY_PORT:-8766}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8766:8766"   # MCP server
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import cgc_plugin_memory; print('ok')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
+  cgc-data:
+
+networks:
+  cgc-network:
+    driver: bridge

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cgc-otel-processor
+  labels:
+    app: cgc-otel-processor
+    app.kubernetes.io/part-of: codegraphcontext
+spec:
+  type: ClusterIP
+  selector:
+    app: cgc-otel-processor
+  ports:
+    - name: grpc-receiver
+      port: 5317
+      targetPort: grpc-receiver
+      protocol: TCP
+    - name: http-otlp
+      port: 4318
+      targetPort: 4318
+      protocol: TCP

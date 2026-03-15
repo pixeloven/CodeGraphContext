@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cgc-memory
+  labels:
+    app: cgc-memory
+    app.kubernetes.io/part-of: codegraphcontext
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cgc-memory
+  template:
+    metadata:
+      labels:
+        app: cgc-memory
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: cgc-memory
+          image: ghcr.io/codegraphcontext/cgc-plugin-memory:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: mcp
+              containerPort: 8766
+              protocol: TCP
+          env:
+            - name: NEO4J_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: cgc-config
+                  key: NEO4J_URI
+            - name: NEO4J_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cgc-config
+                  key: NEO4J_USERNAME
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cgc-secrets
+                  key: NEO4J_PASSWORD
+            - name: NEO4J_DATABASE
+              value: "neo4j"
+            - name: CGC_MEMORY_PORT
+              value: "8766"
+            - name: LOG_LEVEL
+              value: "INFO"
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import cgc_plugin_memory; print('ok')"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import cgc_plugin_memory; print('ok')"]
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"

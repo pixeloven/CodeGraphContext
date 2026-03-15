@@ -53,7 +53,7 @@ jobs:
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/src \
-            quay.io/pypa/manylinux2014_x86_64 \
+            quay.io/pypa/manylinux_2_39_x86_64 \
             /bin/bash -c "
               set -e
               cd /src

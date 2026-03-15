@@ -259,6 +259,44 @@ if not is_win:
         except Exception as e:
             print(f"Warning: collect_all failed for {pkg}: {e}")
 
+# ── falkordblite: explicit auditwheel-vendored shared library collection ──────
+# The Linux manylinux wheel ships shared libraries in a `falkordblite.libs/`
+# directory (placed by auditwheel alongside the importable packages).  This
+# directory is NOT a Python package (no __init__.py), so collect_all/
+# collect_dynamic_libs operating on top-level package names ('dummy',
+# 'redislite') will not find it.  We must explicitly scan for it and register
+# every .so* in it as a binary so the dynamic linker can resolve libcrypto,
+# libssl, and libgomp at runtime inside the frozen one-file executable.
+#
+# On macOS the equivalent vendored dylibs live in redislite/.dylibs/ and are
+# already captured by collect_all('falkordblite') above.  On Windows the
+# package is not installed (sys_platform != 'win32' marker), so this block
+# is also guarded.
+if not is_win:
+    for _sp in search_paths:
+        _fdb_libs = _sp / 'falkordblite.libs'
+        if _fdb_libs.exists():
+            for _lib in _fdb_libs.iterdir():
+                if _lib.is_file() and not _lib.suffix == '.py':
+                    print(f"Bundling falkordblite.libs: {_lib}")
+                    binaries.append((str(_lib), 'falkordblite.libs'))
+            break  # found; no need to check further paths
+
+# falkordblite ships a top-level 'dummy' C extension (dummy.cpython-*.so).
+# It is not an application import but must travel with the bundle as a
+# sentinel that pip/auditwheel attaches native build metadata to.
+# Collect it explicitly so PyInstaller does not silently drop it.
+if not is_win:
+    # 'dummy' may resolve to the stdlib dummy module; guard by only picking up
+    # the .so file that lives directly in a site-packages root (where auditwheel
+    # places it) rather than in any sub-package directory.
+    for _sp in search_paths:
+        for _dummy_so in _sp.glob('dummy.cpython-*.so'):
+            if _dummy_so.is_file():
+                print(f"Bundling falkordblite dummy extension: {_dummy_so}")
+                binaries.append((str(_dummy_so), '.'))
+                break
+
 # stdlibs: dynamically imports py3.py, py312.py, etc. via importlib
 stdlibs_dir = find_pkg_dir('stdlibs')
 if stdlibs_dir:
@@ -283,6 +321,10 @@ if tslp_dir:
 # Add redislite submodules to hidden imports
 hidden_imports += collect_submodules('redislite')
 hidden_imports += collect_submodules('falkordb')
+# falkordblite's top_level.txt declares 'dummy' and 'redislite'.
+# 'redislite' is covered above; add 'dummy' explicitly.
+if not is_win:
+    hidden_imports.append('dummy')
 
 # Add platform-specific watchers
 if is_win:

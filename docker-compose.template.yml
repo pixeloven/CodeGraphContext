@@ -43,7 +43,7 @@ services:
   # Optional: Neo4j database (if you prefer Neo4j over FalkorDB)
   # Required when using any CGC plugin (otel, xdebug).
   neo4j:
-    image: neo4j:5.15.0
+    image: neo4j:2026.02.2
     container_name: cgc-neo4j
     ports:
       - "7474:7474"  # HTTP Browser

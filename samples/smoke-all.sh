@@ -100,33 +100,11 @@ echo
 
 echo "Phase 2: Indexing sample application code..."
 
-SAMPLES_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if docker exec cgc-core-indexer cgc --help &>/dev/null 2>&1; then
-    # Use the cgc-core container (preferred — no local install needed)
-    echo "  Using cgc-core-indexer container..."
-    docker exec cgc-core-indexer cgc index /workspace/samples/php-laravel --database-type neo4j 2>/dev/null || true
-    docker exec cgc-core-indexer cgc index /workspace/samples/python-fastapi --database-type neo4j 2>/dev/null || true
-    docker exec cgc-core-indexer cgc index /workspace/samples/ts-express-gateway --database-type neo4j 2>/dev/null || true
-    echo "  Indexing complete."
-elif command -v cgc &>/dev/null; then
-    # Fall back to local cgc install
-    echo "  Using local cgc CLI..."
-    cgc index "$SAMPLES_DIR/php-laravel" --database-type neo4j 2>/dev/null || true
-    cgc index "$SAMPLES_DIR/python-fastapi" --database-type neo4j 2>/dev/null || true
-    cgc index "$SAMPLES_DIR/ts-express-gateway" --database-type neo4j 2>/dev/null || true
-    echo "  Indexing complete."
-else
-    echo "  No cgc available — start the indexer first:"
-    echo "    docker run --rm -d --name cgc-core-indexer \\"
-    echo "      --network samples_cgc-network \\"
-    echo "      -e DATABASE_TYPE=neo4j -e NEO4J_URI=bolt://neo4j:7687 \\"
-    echo "      -e NEO4J_USERNAME=neo4j -e NEO4J_PASSWORD=codegraph123 \\"
-    echo "      -v \$(cd .. && pwd):/workspace \\"
-    echo "      samples-cgc-core:latest sleep 3600"
-    echo "  Then re-run this script."
-    fail "cgc indexer not available"
-fi
+echo "  Running indexer service..."
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm indexer
+echo "  Indexing complete."
 echo
 
 # ── Phase 3: Generate traffic ────────────────────────────────────────────────

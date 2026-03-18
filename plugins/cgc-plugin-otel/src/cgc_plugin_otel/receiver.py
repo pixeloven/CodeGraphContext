@@ -131,13 +131,9 @@ def main() -> None:
     writer = AsyncOtelWriter(db_manager)
     servicer = OTLPSpanReceiver(writer)
 
-    server = grpc.server(
-        grpc.experimental.aio.server() if False else  # type: ignore[misc]
-        grpc.server(grpc.experimental.insecure_channel_credentials())  # type: ignore[misc]
-    )
+    from concurrent.futures import ThreadPoolExecutor
 
-    # Simpler: use sync gRPC server with ThreadPoolExecutor
-    server = grpc.server(__import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor(max_workers=4))
+    server = grpc.server(ThreadPoolExecutor(max_workers=4))
     trace_service_pb2_grpc.add_TraceServiceServicer_to_server(servicer, server)
     server.add_insecure_port(f"[::]:{_DEFAULT_PORT}")
     server.start()

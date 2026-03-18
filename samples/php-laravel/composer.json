@@ -14,11 +14,7 @@
             "App\\": "app/"
         }
     },
-    "scripts": {
-        "post-autoload-dump": [
-            "@php artisan package:discover --ansi"
-        ]
-    },
+    "scripts": {},
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",

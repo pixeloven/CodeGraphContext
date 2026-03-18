@@ -2,15 +2,16 @@ FROM php:8.3-cli
 
 # System deps
 RUN apt-get update && apt-get install -y \
-    libzip-dev unzip git \
+    libzip-dev libsqlite3-dev unzip git \
     && docker-php-ext-install zip pdo_sqlite \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Install Xdebug
-RUN pecl install xdebug && docker-php-ext-enable xdebug
+# Install OTEL + Xdebug extensions
+RUN pecl install opentelemetry xdebug \
+    && docker-php-ext-enable opentelemetry xdebug
 
 # Configure Xdebug for remote debugging
 RUN echo "xdebug.mode=debug,trace" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
@@ -20,13 +21,12 @@ RUN echo "xdebug.mode=debug,trace" >> /usr/local/etc/php/conf.d/docker-php-ext-x
 
 WORKDIR /app
 
-COPY composer.json ./
+COPY . .
 RUN composer install --no-dev --no-interaction --prefer-dist
 
-COPY . .
-
 # Ensure SQLite database exists
-RUN mkdir -p database && touch database/database.sqlite
+RUN mkdir -p database bootstrap/cache storage/framework/{cache,sessions,views} storage/logs \
+    && touch database/database.sqlite
 
 ENV OTEL_PHP_AUTOLOAD_ENABLED=true
 ENV OTEL_SERVICE_NAME=sample-php

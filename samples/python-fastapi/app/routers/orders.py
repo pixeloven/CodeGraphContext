@@ -11,12 +11,12 @@ _repository = OrderRepository(db_path=_DB_PATH)
 _service = OrderService(repository=_repository)
 
 
-@order_router.get("/", response_model=list[Order])
+@order_router.get("", response_model=list[Order])
 async def list_orders() -> list[dict]:
     return await _service.list_orders()
 
 
-@order_router.post("/", response_model=Order, status_code=201)
+@order_router.post("", response_model=Order, status_code=201)
 async def create_order(data: OrderCreate) -> dict:
     try:
         return await _service.create_order(data)

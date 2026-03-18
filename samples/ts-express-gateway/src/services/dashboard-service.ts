@@ -25,11 +25,11 @@ export class DashboardService {
       fetch(`${PYTHON_BACKEND}/api/orders`),
     ]);
 
-    const phpOrders: unknown[] = phpResponse.ok
-      ? await phpResponse.json()
+    const phpOrders = phpResponse.ok
+      ? ((await phpResponse.json()) as unknown[])
       : [];
-    const pythonOrders: unknown[] = pythonResponse.ok
-      ? await pythonResponse.json()
+    const pythonOrders = pythonResponse.ok
+      ? ((await pythonResponse.json()) as unknown[])
       : [];
 
     return {

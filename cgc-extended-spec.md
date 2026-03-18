@@ -13,11 +13,10 @@
 |---|---|---|
 | **Static** | CGC (existing) | Code structure — classes, methods, relationships as written |
 | **Runtime** | OTEL + Xdebug (new) | Execution reality — what actually runs, how, across services |
-| **Memory** | neo4j-memory MCP (new) | Project knowledge — specs, research, decisions, context |
 
 ### Guiding Principles
 
-- **Same Neo4j instance** — all three layers share one database, enabling cross-layer queries
+- **Same Neo4j instance** — both layers share one database, enabling cross-layer queries
 - **Non-invasive** — no required changes to target applications beyond standard OTEL instrumentation
 - **Composable** — each service is independently useful; the value multiplies when combined
 - **Homelab-friendly** — runs behind a reverse proxy (Traefik), k8s-compatible, self-contained
@@ -96,16 +95,15 @@ cgc-extended/
 │  │  (shared with CGC static nodes)             │   │
 │  └─────────────────────────────────────────────┘   │
 │           │                                        │
-│  ┌────────▼────────┐    ┌──────────────────────┐   │
-│  │  CodeGraphCtx   │    │  neo4j-memory MCP     │   │
-│  │  (CGC, static)  │    │  (specs/research)     │   │
-│  └─────────────────┘    └──────────────────────┘   │
+│  ┌────────▼────────┐                                │
+│  │  CodeGraphCtx   │                                │
+│  │  (CGC, static)  │                                │
+│  └─────────────────┘                                │
 └────────────────────────────────────────────────────┘
        │
        ▼
   Traefik (reverse proxy)
   → cgc-x.your-domain.com/mcp
-  → memory.your-domain.com/mcp
 ```
 
 ---
@@ -154,16 +152,6 @@ All nodes carry a `source` property that identifies their origin. This is the ke
     source: 'runtime_xdebug'
 })
 
-// ── MEMORY LAYER (neo4j-memory MCP) ──────────────────────
-(:Memory     {
-    id,
-    name,
-    entity_type,      // spec, decision, research, bug, feature, etc.
-    created_at,
-    updated_at,
-    source: 'memory'
-})
-(:Observation { content, created_at })
 ```
 
 ### Relationship Types
@@ -185,13 +173,6 @@ All nodes carry a `source` property that identifies their origin. This is the ke
 // Runtime — Xdebug
 (StackFrame)-[:CALLED_BY]->(StackFrame)
 (StackFrame)-[:RESOLVES_TO]->(Method)     // ← links to static layer
-
-// Memory
-(Memory)-[:HAS_OBSERVATION]->(Observation)
-(Memory)-[:RELATES_TO]->(Memory)
-(Memory)-[:DESCRIBES]->(Class)            // ← links to static layer
-(Memory)-[:DESCRIBES]->(Method)           // ← links to static layer
-(Memory)-[:COVERS]->(Span)               // ← links to runtime layer
 
 // Cross-layer correlation
 (Span)-[:CORRELATES_TO]->(Method)         // OTEL span → static method node
@@ -215,12 +196,6 @@ CREATE INDEX span_trace IF NOT EXISTS
 
 CREATE INDEX span_class IF NOT EXISTS
   FOR (s:Span) ON (s.class_name);
-
-CREATE FULLTEXT INDEX memory_search IF NOT EXISTS
-  FOR (m:Memory) ON EACH [m.name, m.entity_type];
-
-CREATE FULLTEXT INDEX observation_search IF NOT EXISTS
-  FOR (o:Observation) ON EACH [o.content];
 ```
 
 ---
@@ -430,38 +405,6 @@ def chain_hash(frames: list[dict]) -> str:
 
 ---
 
-### 5.4 Memory MCP Service
-
-Use the official `mcp/neo4j-memory` Docker image. No custom code required.
-
-**Configuration:**
-```yaml
-# docker-compose.yml excerpt
-cgc-memory:
-  image: mcp/neo4j-memory
-  environment:
-    NEO4J_URL: bolt://neo4j:7687
-    NEO4J_USERNAME: neo4j
-    NEO4J_PASSWORD: ${NEO4J_PASSWORD}
-    NEO4J_DATABASE: neo4j          # same DB as everything else
-    NEO4J_MCP_SERVER_HOST: 0.0.0.0
-    NEO4J_MCP_SERVER_PORT: 8766
-```
-
-**Usage guidance for your team:**
-
-Store the following entity types to get maximum value:
-- `spec` — functional requirements, acceptance criteria
-- `decision` — architectural decisions with rationale (lightweight ADR)
-- `research` — spike findings, library evaluations
-- `bug` — known issues, reproduction steps, root cause once found
-- `feature` — planned work with context
-- `integration` — notes on cross-service contracts and dependencies
-
-When a Memory node `DESCRIBES` a Class or Method that CGC has indexed, the AI assistant can answer questions like: *"Show me the spec for the payment service and which methods implement it."*
-
----
-
 ## 6. Docker Compose
 
 ```yaml
@@ -528,24 +471,6 @@ services:
     depends_on:
       neo4j:
         condition: service_healthy
-
-  cgc-memory:
-    image: mcp/neo4j-memory
-    container_name: cgc-memory
-    restart: unless-stopped
-    environment:
-      NEO4J_URL: bolt://neo4j:7687
-      NEO4J_USERNAME: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
-      NEO4J_DATABASE: neo4j
-      NEO4J_MCP_SERVER_HOST: 0.0.0.0
-      NEO4J_MCP_SERVER_PORT: 8766
-    depends_on:
-      neo4j:
-        condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.cgc-memory.rule=Host(`memory.${DOMAIN}`)"
 
 volumes:
   neo4j_data:
@@ -633,13 +558,12 @@ Goal: Neo4j running, CGC indexing, schema in place.
 
 - [ ] Set up repository structure
 - [ ] Write `config/neo4j/init.cypher` with constraints and indexes
-- [ ] Wire up `docker-compose.yml` with Neo4j + CGC + memory MCP
+- [ ] Wire up `docker-compose.yml` with Neo4j + CGC
 - [ ] Verify CGC indexes a Laravel project into Neo4j
-- [ ] Verify `mcp/neo4j-memory` connects to same DB and nodes are queryable
-- [ ] Set up Traefik labels and confirm both MCP endpoints are accessible
+- [ ] Set up Traefik labels and confirm MCP endpoint is accessible
 - [ ] Write `docs/neo4j-schema.md` as living document
 
-**Success criterion:** AI assistant can query static code nodes AND store/retrieve memory entities, in the same Neo4j instance.
+**Success criterion:** AI assistant can query static code nodes in Neo4j.
 
 ---
 
@@ -691,23 +615,18 @@ MATCH (s)-[:CHILD_OF*1..10]->(child:Span)
 OPTIONAL MATCH (child)-[:CORRELATES_TO]->(m:Method)
 RETURN s, child, m
 
--- "Which specs describe code that was called in the last hour?"
-MATCH (mem:Memory)-[:DESCRIBES]->(m:Method)
-MATCH (s:Span)-[:CORRELATES_TO]->(m)
-WHERE s.started_at > timestamp() - 3600000
-RETURN mem.name, mem.entity_type, m.fqn, s.name
-
 -- "Show cross-service call chains"
 MATCH (svc1:Service)-[:ORIGINATED_FROM]-(t:Trace)-[:PART_OF]-(s:Span)
 MATCH (s)-[:CALLS_SERVICE]->(svc2:Service)
 RETURN svc1.name, svc2.name, count(*) as call_count
 ORDER BY call_count DESC
 
--- "What code runs that has no spec?"
-MATCH (m:Method)<-[:CORRELATES_TO]-(s:Span)
-WHERE NOT EXISTS { MATCH (mem:Memory)-[:DESCRIBES]->(m) }
-RETURN m.fqn, count(s) as execution_count
-ORDER BY execution_count DESC
+-- "What static code is never observed at runtime?"
+MATCH (m:Method)
+WHERE NOT EXISTS { MATCH (m)<-[:CORRELATES_TO]-(:Span) }
+  AND NOT EXISTS { MATCH (m)<-[:RESOLVES_TO]-(:StackFrame) }
+RETURN m.fqn, m.class_name
+ORDER BY m.class_name
 ```
 
 - [ ] Write and test the above canonical queries
@@ -746,8 +665,6 @@ OTEL_PROCESSOR_FLUSH_INTERVAL=5
 XDEBUG_DEDUP_CACHE_SIZE=10000
 XDEBUG_MAX_DEPTH=20             # max stack depth to capture
 
-# Memory MCP
-# (uses NEO4J_* vars above, no additional config needed)
 ```
 
 ---
@@ -762,9 +679,6 @@ Cross-layer queries require traversing between node types. If CGC static nodes a
 
 **Why the OTel Collector in between?**
 Direct OTLP from app → otel-processor works but is fragile. The collector handles batching, retry on failure, and gives you a place to add sampling rules or additional exporters (e.g., Jaeger for visual trace inspection) without touching application config.
-
-**Why `mcp/neo4j-memory` rather than a custom memory service?**
-It's maintained, well-documented, and covers the generic memory use case well. The value of CGC-X is the unified graph — not reinventing memory storage.
 
 **Xdebug `trigger` mode rather than `yes` mode?**
 `yes` mode captures every request, generating massive graph noise and degrading performance. `trigger` mode lets you selectively capture specific requests using the `XDEBUG_TRIGGER` cookie/header, giving you targeted, high-quality traces.

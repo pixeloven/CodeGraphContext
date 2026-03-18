@@ -7,12 +7,11 @@
 
 Extend CodeGraphContext with a Python entry-points plugin system that allows independently
 installable packages to contribute CLI commands (Typer) and MCP tools without modifying
-CGC core. Three first-party plugins ship with the extension: an OTEL span processor (runtime
-intelligence), an Xdebug DBGp listener (dev-time stack traces), and a memory knowledge
-wrapper (project context). A shared GitHub Actions matrix CI/CD pipeline builds and publishes
-versioned Docker images for each plugin service. All plugin data flows into the existing
-Neo4j/FalkorDB graph, enabling cross-layer queries across static code, runtime execution,
-and project knowledge.
+CGC core. Two first-party plugins ship with the extension: an OTEL span processor (runtime
+intelligence) and an Xdebug DBGp listener (dev-time stack traces). A shared GitHub Actions
+matrix CI/CD pipeline builds and publishes versioned Docker images for each plugin service.
+All plugin data flows into the existing Neo4j/FalkorDB graph, enabling cross-layer queries
+across static code and runtime execution.
 
 ## Technical Context
 
@@ -21,7 +20,6 @@ and project knowledge.
 - Plugin system: `importlib.metadata` (stdlib), `packaging>=23.0` (version constraint checking)
 - OTEL plugin: `grpcio>=1.57.0`, `opentelemetry-proto>=0.43b0`, `opentelemetry-sdk>=1.20.0`
 - Xdebug plugin: stdlib only (`socket`, `xml.etree.ElementTree`, `hashlib`)
-- Memory plugin: wraps `mcp/neo4j-memory` Docker image; thin Python package only
 - All plugins: `typer[all]>=0.9.0`, `neo4j>=5.15.0` (shared with core)
 
 **Storage**: Neo4j (production) / FalkorDB (default) — same shared instance as CGC core;
@@ -36,7 +34,7 @@ networking, env-var-only config)
 **Project Type**: Python library + CLI extensions + containerised microservices
 
 **Performance Goals**:
-- CGC startup with all 3 plugins: ≤ 15 seconds
+- CGC startup with all plugins: ≤ 15 seconds
 - Span data queryable within 10 seconds of request completion under normal load
 - Plugin load failure: ≤ 5-second timeout per plugin (SIGALRM)
 
@@ -46,7 +44,7 @@ networking, env-var-only config)
 - `./tests/run_tests.sh fast` MUST pass after each phase
 - Xdebug plugin MUST default to disabled (security: TCP listener)
 
-**Scale/Scope**: 3 plugin packages, 1 shared CI/CD pipeline, 5 container services
+**Scale/Scope**: 2 plugin packages, 1 shared CI/CD pipeline, 4 container services
 
 ## Constitution Check
 
@@ -54,10 +52,10 @@ networking, env-var-only config)
 
 | Principle | Status | Evidence |
 |---|---|---|
-| **I. Graph-First Architecture** | ✅ PASS | All plugin output (spans, stack frames, memory entities) writes to the graph as typed nodes + relationships per `data-model.md`. No flat data structures. Graph schema is the output target for all three plugins. |
+| **I. Graph-First Architecture** | ✅ PASS | All plugin output (spans, stack frames) writes to the graph as typed nodes + relationships per `data-model.md`. No flat data structures. Graph schema is the output target for both plugins. |
 | **II. Dual Interface — CLI + MCP** | ✅ PASS | Each plugin MUST contribute both CLI commands AND MCP tools (per plugin interface contract). The plugin contract enforces parity by design. |
 | **III. Testing Pyramid** | ✅ PASS | Plugin packages include `tests/unit/` and `tests/integration/`. `./tests/run_tests.sh fast` is extended to cover plugin directories. E2E tests cover the full plugin lifecycle. Tests written and observed to FAIL before implementation (Red-Green-Refactor). |
-| **IV. Multi-Language Parser Parity** | ✅ PASS | No new language parsers introduced. Runtime nodes carry `source` property (`"runtime_otel"`, `"runtime_xdebug"`, `"memory"`) that distinguish origin layers without breaking existing cross-language queries. |
+| **IV. Multi-Language Parser Parity** | ✅ PASS | No new language parsers introduced. Runtime nodes carry `source` property (`"runtime_otel"`, `"runtime_xdebug"`) that distinguish origin layers without breaking existing cross-language queries. |
 | **V. Simplicity** | ⚠️ JUSTIFIED | Plugin registry is an abstraction. Justified because: (a) the feature requires extensibility without forking core — a non-negotiable requirement; (b) `importlib.metadata` entry-points is Python stdlib — minimal abstraction; (c) without a registry, adding each plugin would require modifying `server.py` and `cli/main.py` permanently, producing a worse monolith. See Complexity Tracking below. |
 
 *Post-Phase 1 re-check*: ✅ Design satisfies all five principles. No new violations introduced.
@@ -101,23 +99,15 @@ plugins/
 │       ├── span_processor.py   # PHP attribute extraction + correlation logic
 │       └── neo4j_writer.py     # Async batch writer with dead-letter queue
 │
-├── cgc-plugin-xdebug/
-│   ├── pyproject.toml
-│   ├── Dockerfile
-│   └── src/cgc_plugin_xdebug/
-│       ├── __init__.py         # PLUGIN_METADATA
-│       ├── cli.py              # get_plugin_commands() → ("xdebug", typer.Typer)
-│       ├── mcp_tools.py        # get_mcp_tools(), get_mcp_handlers()
-│       ├── dbgp_server.py      # TCP DBGp listener + XML stack frame parser
-│       └── neo4j_writer.py     # Frame upsert + CALLED_BY chain + deduplication
-│
-└── cgc-plugin-memory/
+└── cgc-plugin-xdebug/
     ├── pyproject.toml
-    ├── Dockerfile              # Wraps mcp/neo4j-memory + proxy layer
-    └── src/cgc_plugin_memory/
+    ├── Dockerfile
+    └── src/cgc_plugin_xdebug/
         ├── __init__.py         # PLUGIN_METADATA
-        ├── cli.py              # get_plugin_commands() → ("memory", typer.Typer)
-        └── mcp_tools.py        # get_mcp_tools(), get_mcp_handlers() (proxy)
+        ├── cli.py              # get_plugin_commands() → ("xdebug", typer.Typer)
+        ├── mcp_tools.py        # get_mcp_tools(), get_mcp_handlers()
+        ├── dbgp_server.py      # TCP DBGp listener + XML stack frame parser
+        └── neo4j_writer.py     # Frame upsert + CALLED_BY chain + deduplication
 
 # Tests (additions to existing structure)
 tests/
@@ -129,8 +119,7 @@ tests/
 ├── integration/
 │   └── plugin/
 │       ├── test_plugin_load.py        # Plugin discovery + load integration
-│       ├── test_otel_integration.py   # OTLP receive → graph write
-│       └── test_memory_integration.py # Memory store → graph node
+│       └── test_otel_integration.py   # OTLP receive → graph write
 └── e2e/
     └── plugin/
         └── test_plugin_lifecycle.py   # Full install/use/uninstall user journey
@@ -143,7 +132,7 @@ tests/
     └── test-plugins.yml               # NEW: per-plugin fast test suite
 
 # Deployment
-docker-compose.yml                     # MODIFIED: add otel + memory services
+docker-compose.yml                     # MODIFIED: add otel services
 docker-compose.dev.yml                 # MODIFIED: add xdebug service
 config/
 ├── otel-collector/
@@ -152,10 +141,7 @@ config/
     └── init.cypher                    # MODIFIED: add plugin schema constraints
 
 k8s/
-├── cgc-plugin-otel/
-│   ├── deployment.yaml
-│   └── service.yaml
-└── cgc-plugin-memory/
+└── cgc-plugin-otel/
     ├── deployment.yaml
     └── service.yaml
 ```
@@ -173,4 +159,4 @@ in the root `pyproject.toml`. Each plugin that exposes a container service has i
 |---|---|---|
 | Plugin registry abstraction | Feature explicitly requires extensibility without forking core. Three current plugins + third-party extensibility require a clean registration boundary. | Hardcoding plugins in `server.py`/`main.py` defeats the extensibility requirement entirely. There is no simpler path to the stated goal. |
 | gRPC server in OTEL plugin | OTLP protocol uses gRPC. The Python opentelemetry-sdk is tracer-side only and cannot act as a receiver. | Pure HTTP OTLP would require the same gRPC-level effort and provides less tooling ecosystem support. The OTel Collector (sidecar) already handles the edge; gRPC is the right interface for collector → processor. |
-| Multiple new graph node types | Runtime and memory layers produce genuinely different data (spans, frames, knowledge entities). Reusing existing `Method`/`Class` nodes for runtime data would corrupt the static layer. | Cannot collapse runtime nodes into static nodes — they represent different semantic things (observed execution vs. declared code). The `source` property differentiates them without schema explosion. |
+| Multiple new graph node types | Runtime layers produce genuinely different data (spans, frames). Reusing existing `Method`/`Class` nodes for runtime data would corrupt the static layer. | Cannot collapse runtime nodes into static nodes — they represent different semantic things (observed execution vs. declared code). The `source` property differentiates them without schema explosion. |

@@ -22,7 +22,6 @@ plugins/
   cgc-plugin-stub/           ← Reference stub plugin (minimal test fixture)
   cgc-plugin-otel/           ← OpenTelemetry span receiver plugin
   cgc-plugin-xdebug/         ← Xdebug DBGp call-stack listener plugin
-  cgc-plugin-memory/         ← Project knowledge memory plugin
 docs/
   plugins/
     authoring-guide.md       ← How to write a CGC plugin
@@ -66,7 +65,6 @@ Plugin tools must be prefixed with plugin name: `<pluginname>_<toolname>` (e.g. 
 pip install -e plugins/cgc-plugin-stub      # minimal test fixture
 pip install -e plugins/cgc-plugin-otel
 pip install -e plugins/cgc-plugin-xdebug
-pip install -e plugins/cgc-plugin-memory
 ```
 
 ### Run plugin tests

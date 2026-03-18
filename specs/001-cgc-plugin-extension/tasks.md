@@ -34,12 +34,11 @@ Tests MUST be written and observed to FAIL before the corresponding implementati
 **Purpose**: Initialize all plugin package scaffolding and root configuration before any
 story work begins.
 
-- [X] T001 Create `plugins/` directory tree: `plugins/cgc-plugin-otel/src/cgc_plugin_otel/`, `plugins/cgc-plugin-xdebug/src/cgc_plugin_xdebug/`, `plugins/cgc-plugin-memory/src/cgc_plugin_memory/`, `plugins/cgc-plugin-stub/src/cgc_plugin_stub/` with empty `__init__.py` placeholders
+- [X] T001 Create `plugins/` directory tree: `plugins/cgc-plugin-otel/src/cgc_plugin_otel/`, `plugins/cgc-plugin-xdebug/src/cgc_plugin_xdebug/`, `plugins/cgc-plugin-stub/src/cgc_plugin_stub/` with empty `__init__.py` placeholders
 - [X] T002 [P] Write `plugins/cgc-plugin-otel/pyproject.toml` — package name `cgc-plugin-otel`, entry-points groups `cgc_cli_plugins` and `cgc_mcp_plugins`, deps: `grpcio>=1.57.0`, `opentelemetry-proto>=0.43b0`, `opentelemetry-sdk>=1.20.0`, `typer[all]>=0.9.0`, `neo4j>=5.15.0`
 - [X] T003 [P] Write `plugins/cgc-plugin-xdebug/pyproject.toml` — package name `cgc-plugin-xdebug`, entry-points groups `cgc_cli_plugins` and `cgc_mcp_plugins`, deps: `typer[all]>=0.9.0`, `neo4j>=5.15.0` (stdlib-only implementation)
-- [X] T004 [P] Write `plugins/cgc-plugin-memory/pyproject.toml` — package name `cgc-plugin-memory`, entry-points groups `cgc_cli_plugins` and `cgc_mcp_plugins`, deps: `typer[all]>=0.9.0`, `neo4j>=5.15.0`
 - [X] T005 [P] Write `plugins/cgc-plugin-stub/pyproject.toml` — package name `cgc-plugin-stub`, entry-points groups `cgc_cli_plugins` and `cgc_mcp_plugins`, dep: `typer[all]>=0.9.0` only (minimal test fixture)
-- [X] T006 Add `packaging>=23.0` dependency and optional extras `[otel]`, `[xdebug]`, `[memory]`, `[all]` to root `pyproject.toml`, each extra pointing at its corresponding plugin package in `plugins/`
+- [X] T006 Add `packaging>=23.0` dependency and optional extras `[otel]`, `[xdebug]`, `[all]` to root `pyproject.toml`, each extra pointing at its corresponding plugin package in `plugins/`
 
 ---
 
@@ -52,7 +51,7 @@ The `PluginRegistry` class, graph schema migration, and test infrastructure are 
 
 > **NOTE: Write tests FIRST (T008), ensure they FAIL before implementing T007**
 
-- [X] T007 [P] Add plugin schema constraints and indexes to `config/neo4j/init.cypher` — `UNIQUE` constraints for Service.name, Trace.trace_id, Span.span_id, StackFrame.frame_id; indexes on Span.trace_id, Span.class_name, Span.http_route, StackFrame.fqn; FULLTEXT indexes for Memory.name+entity_type and Observation.content (per data-model.md)
+- [X] T007 [P] Add plugin schema constraints and indexes to `config/neo4j/init.cypher` — `UNIQUE` constraints for Service.name, Trace.trace_id, Span.span_id, StackFrame.frame_id; indexes on Span.trace_id, Span.class_name, Span.http_route, StackFrame.fqn (per data-model.md)
 - [X] T008 Write `tests/unit/plugin/test_plugin_registry.py` — unit tests (all entry points mocked) covering: discovers plugins from both entry-point groups, validates PLUGIN_METADATA required fields, skips plugin with incompatible cgc_version_constraint, skips plugin with conflicting name (second plugin), catches ImportError without crashing host, catches exception in get_plugin_commands() without crashing host, reports loaded/failed counts correctly. **Run and confirm FAILING before T009.**
 - [X] T009 Implement `src/codegraphcontext/plugin_registry.py` — `PluginRegistry` class with: `discover_cli_plugins()` (reads `cgc_cli_plugins` group), `discover_mcp_plugins()` (reads `cgc_mcp_plugins` group), `_validate_metadata()` (checks required fields + cgc_version_constraint via `packaging.specifiers.SpecifierSet`), `_safe_load()` (try/except + SIGALRM 5s timeout on Unix), `_safe_call()` (try/except wrapper for get_plugin_commands/get_mcp_tools/get_mcp_handlers), `loaded_plugins: dict`, `failed_plugins: dict`, startup summary log line
 - [X] T010 Update `tests/run_tests.sh` to include `tests/unit/plugin/` and `tests/integration/plugin/` in the `fast` suite alongside existing unit + integration paths
@@ -100,7 +99,7 @@ Query `MATCH (s:Span)-[:CORRELATES_TO]->(m:Method) RETURN s.name, m.fqn LIMIT 5`
 - [X] T020 [US2] Implement `plugins/cgc-plugin-otel/src/cgc_plugin_otel/span_processor.py` — `extract_php_context(span_attrs: dict) -> dict` (parses code.namespace, code.function, http.route, http.method, db.statement, db.system into typed dict); `build_fqn(namespace, function) -> str | None`; `is_cross_service_span(span_kind, span_attrs) -> bool`; `should_filter_span(span_attrs, filter_routes: list[str]) -> bool` (configurable noise filter)
 - [X] T021 [US2] Implement `plugins/cgc-plugin-otel/src/cgc_plugin_otel/neo4j_writer.py` — `AsyncOtelWriter` class: async `write_batch(spans: list[dict])` using `asyncio.Queue(maxsize=10000)` and periodic flush (batch size 100, timeout 5s); MERGE queries for Service, Trace, Span nodes; CHILD_OF (parent_span_id), PART_OF (trace), ORIGINATED_FROM (service), CALLS_SERVICE (CLIENT kind), CORRELATES_TO (fqn match against existing Method nodes); dead-letter queue with `asyncio.Queue(maxsize=100000)` for Neo4j unavailability; `_background_retry_task()` coroutine
 - [X] T022 [US2] Implement `plugins/cgc-plugin-otel/src/cgc_plugin_otel/receiver.py` — `OTLPSpanReceiver` class implementing `TraceServiceServicer` (grpcio + opentelemetry-proto); `Export()` method queues spans for batch processing; `main()` starts gRPC server on `OTEL_RECEIVER_PORT` (default 5317) + launches `process_span_batch()` background task; graceful shutdown on SIGTERM
-- [X] T023 [P] [US2] Implement `plugins/cgc-plugin-otel/src/cgc_plugin_otel/mcp_tools.py` — `get_mcp_tools()` returning: `otel_query_spans` (args: http_route, service, limit), `otel_list_services` (no args), `otel_cross_layer_query` (args: query_type enum: `unspecced_running_code|cross_service_calls|recent_executions`); `get_mcp_handlers()` with corresponding Cypher-backed handlers using `server_context["db_manager"]`
+- [X] T023 [P] [US2] Implement `plugins/cgc-plugin-otel/src/cgc_plugin_otel/mcp_tools.py` — `get_mcp_tools()` returning: `otel_query_spans` (args: http_route, service, limit), `otel_list_services` (no args), `otel_cross_layer_query` (args: query_type enum: `never_observed|cross_service_calls|recent_executions`); `get_mcp_handlers()` with corresponding Cypher-backed handlers using `server_context["db_manager"]`
 - [X] T024 [US2] Create `config/otel-collector/config.yaml` — OTLP gRPC+HTTP receivers (ports 4317, 4318); batch processor (timeout 5s, send_batch_size 512); filter processor dropping spans where `http.route` matches `/health`, `/metrics`, `/ping`; OTLP exporter forwarding to `otel-processor:5317` (insecure TLS)
 - [X] T025 [US2] Add OTEL services to `docker-compose.yml` — `otel-collector` service (image: `otel/opentelemetry-collector-contrib:latest`, ports 4317-4318, depends on otel-processor); `cgc-otel-processor` service (build: `plugins/cgc-plugin-otel`, env: NEO4J_URI/USERNAME/PASSWORD/LISTEN_PORT/LOG_LEVEL, depends on neo4j healthcheck, Traefik labels)
 - [X] T026 [US2] Write `tests/integration/plugin/test_otel_integration.py` — with real Neo4j fixture (or mock db_manager): call `write_batch()` with synthetic span dicts; assert Service node created with correct name; assert Span node created with correct span_id; assert CHILD_OF relationship created for parent_span_id; assert CORRELATES_TO created when fqn matches pre-existing Method node; assert filtered spans (health route) produce zero graph nodes
@@ -132,28 +131,7 @@ with CALLED_BY chain relationships and RESOLVES_TO links to Method nodes.
 
 ---
 
-## Phase 6: User Story 4 — Project Knowledge via Memory Plugin (Priority: P4)
-
-**Goal**: Memory plugin exposes MCP tools and CLI commands to store/search/link knowledge
-entities in the same Neo4j graph, enabling "which code has no spec?" queries.
-
-**Independent Test**: `cgc memory store --type spec --name "Order spec" --content "..."
---links-to "App\\Http\\Controllers\\OrderController"` → Memory node in graph →
-`cgc memory undocumented` returns unlinked Class nodes.
-
-> **NOTE: Write integration tests (T034) FIRST, ensure they FAIL before T035–T037**
-
-- [X] T034 Write `tests/integration/plugin/test_memory_integration.py` — tests with mocked db_manager running real Cypher: call `memory_store` handler → assert Memory node created with correct entity_type; call `memory_link` with existing Class fqn → assert DESCRIBES relationship created; call `memory_undocumented` → assert Class nodes without DESCRIBES appear in result; call `memory_search` with text → assert full-text search returns matching Memory node. **Run and confirm FAILING before T035.**
-- [X] T035 [P] [US4] Implement `plugins/cgc-plugin-memory/src/cgc_plugin_memory/__init__.py` — `PLUGIN_METADATA` dict: name `cgc-plugin-memory`, version `0.1.0`, cgc_version_constraint `>=0.1.0`
-- [X] T036 [P] [US4] Implement `plugins/cgc-plugin-memory/src/cgc_plugin_memory/cli.py` — `get_plugin_commands()` returning `("memory", memory_app)` with commands: `store --type TEXT --name TEXT --content TEXT [--links-to TEXT]`, `search --query TEXT`, `undocumented [--type TEXT]`, `status`
-- [X] T037 [US4] Implement `plugins/cgc-plugin-memory/src/cgc_plugin_memory/mcp_tools.py` — `get_mcp_tools()` returning: `memory_store` (args: entity_type, name, content, links_to?), `memory_search` (args: query, limit), `memory_undocumented` (args: node_type enum Class|Method, limit), `memory_link` (args: memory_id, node_fqn, node_type); `get_mcp_handlers()` with Cypher-backed handlers: memory_store MERGEs Memory node + HAS_OBSERVATION + optional DESCRIBES; memory_search uses FULLTEXT index; memory_undocumented matches Class/Method WHERE NOT EXISTS DESCRIBES; memory_link creates DESCRIBES edge
-- [X] T038 [US4] Add `cgc-memory` service to `docker-compose.yml` — image: `mcp/neo4j-memory`, env: NEO4J_URL/NEO4J_USERNAME/NEO4J_PASSWORD/NEO4J_DATABASE=neo4j/NEO4J_MCP_SERVER_HOST/NEO4J_MCP_SERVER_PORT=8766, depends on neo4j healthcheck, Traefik labels for `memory.${DOMAIN}`
-
-**Checkpoint**: Memory plugin loads; `memory_store` MCP tool creates Memory+Observation nodes in graph; `memory_undocumented` returns correct unlinked code nodes.
-
----
-
-## Phase 7: User Story 5 — Automated Container Builds via Common CI/CD Pipeline (Priority: P5)
+## Phase 6: User Story 4 — Automated Container Builds via Common CI/CD Pipeline (Priority: P4)
 
 **Goal**: GitHub Actions matrix pipeline builds, smoke tests, and publishes versioned Docker
 images for all plugin services. Adding a new service requires only editing `.github/services.json`.
@@ -164,14 +142,11 @@ verify a failure in one service does not cancel other builds.
 
 - [X] T039 [P] [US5] Create `plugins/cgc-plugin-otel/Dockerfile` — `FROM python:3.12-slim`, non-root `USER cgc`, `COPY` and `pip install --no-cache-dir`, `EXPOSE 5317`, `HEALTHCHECK --interval=30s --timeout=10s CMD python -c "import grpc; print('ok')"`, `CMD ["python", "-m", "cgc_plugin_otel.receiver"]`; no `ENV` with secret values
 - [X] T040 [P] [US5] Create `plugins/cgc-plugin-xdebug/Dockerfile` — `FROM python:3.12-slim`, non-root user, `EXPOSE 9003`, `HEALTHCHECK CMD python -c "import socket; socket.socket()"`, `CMD ["python", "-m", "cgc_plugin_xdebug.dbgp_server"]`; requires `CGC_PLUGIN_XDEBUG_ENABLED=true` at runtime
-- [X] T041 [P] [US5] Create `plugins/cgc-plugin-memory/Dockerfile` — `FROM python:3.12-slim`, non-root user, install `cgc-plugin-memory` package, `EXPOSE 8766`, `HEALTHCHECK --interval=30s CMD python -c "import cgc_plugin_memory; print('ok')"`, env-var-only config
-- [X] T042 [US5] Create `.github/services.json` — JSON array with entries for: `cgc-core` (path: `.`, dockerfile: `Dockerfile`, health_check: `version`), `cgc-plugin-otel` (path: `plugins/cgc-plugin-otel`, health_check: `grpc_ping`), `cgc-plugin-memory` (path: `plugins/cgc-plugin-memory`, health_check: `http_health`) per `contracts/cicd-pipeline.md` schema
+- [X] T042 [US5] Create `.github/services.json` — JSON array with entries for: `cgc-core` (path: `.`, dockerfile: `Dockerfile`, health_check: `version`), `cgc-plugin-otel` (path: `plugins/cgc-plugin-otel`, health_check: `grpc_ping`), `cgc-plugin-xdebug` (path: `plugins/cgc-plugin-xdebug`, health_check: `tcp_connect`) per `contracts/cicd-pipeline.md` schema
 - [X] T043 [US5] Create `.github/workflows/docker-publish.yml` — `setup` job reads `.github/services.json` and outputs matrix; `build-images` job with `strategy: {matrix: ${{ fromJson(...) }}, fail-fast: false}`: checkout, `docker/setup-buildx-action@v3`, `docker/login-action@v3` (GHCR, skipped on PR), `docker/metadata-action@v5` (semver+latest tags), `docker/build-push-action@v5` with `push: false` + `outputs: type=docker` for smoke test, smoke test per `health_check` type, then `docker/build-push-action@v5` with `push: true` if not PR and smoke test passed; `build-summary` job reports overall status
 - [X] T044 [P] [US5] Create `.github/workflows/test-plugins.yml` — GitHub Actions workflow triggered on PR: matrix over plugin directories, runs `pip install -e . -e plugins/${{ matrix.plugin }}` then `pytest tests/unit/plugin/ tests/integration/plugin/ -v` per plugin; fail-fast: false
 - [X] T045 [P] [US5] Create `k8s/cgc-plugin-otel/deployment.yaml` — standard `Deployment` (replicas: 1, image ref from registry, env from ConfigMap `cgc-config` for NEO4J_URI/USERNAME + Secret `cgc-secrets` for NEO4J_PASSWORD, readinessProbe via exec checking grpc import, no hostNetwork)
 - [X] T046 [P] [US5] Create `k8s/cgc-plugin-otel/service.yaml` — `ClusterIP` Service exposing port 5317 (gRPC receiver) and 4318 (HTTP, forwarded from collector)
-- [X] T047 [P] [US5] Create `k8s/cgc-plugin-memory/deployment.yaml` and `k8s/cgc-plugin-memory/service.yaml` — Deployment with `mcp/neo4j-memory` image, env from ConfigMap+Secret, Service exposing port 8766
-
 **Checkpoint**: Triggering the workflow on a test tag builds all services in parallel; one intentional Dockerfile error only fails that service's job; remaining images publish to registry with correct semver tags.
 
 ---
@@ -212,15 +187,11 @@ improvements that span multiple user stories.
   - T028, T029 (metadata + CLI) parallel
   - T030 → T031 (dbgp_server → neo4j_writer — sequential; writer depends on parsed frames)
   - T032 (MCP tools) independent — parallel with T031
-- **US4 (Phase 6)**: Depends on US1 complete; independent of US2 and US3
-  - T034 (integration tests) before T035-T037
-  - T035, T036 (metadata + CLI) parallel
-  - T037 (MCP tools) depends on T035 (metadata)
-- **US5 (Phase 7)**: Depends on US2 and US3 complete (Dockerfiles need working services)
-  - T039, T040, T041 (Dockerfiles) all parallel
+- **US4 (Phase 6)**: Depends on US2 + US3 complete (Dockerfiles need working services)
+  - T039, T040 (Dockerfiles) parallel
   - T042 (services.json) before T043 (workflow)
   - T044 (test workflow) parallel with T043
-  - T045, T046, T047 (K8s manifests) all parallel, independent of T043-T044
+  - T045, T046 (K8s manifests) parallel, independent of T043-T044
 - **Polish (Final Phase)**: Depends on all user stories complete
   - T049, T050, T051 all parallel
   - T052 (quickstart validation) last — sequentially after T048-T051
@@ -230,8 +201,7 @@ improvements that span multiple user stories.
 - **US1 (P1)**: No story dependencies — first to implement
 - **US2 (P2)**: Depends on US1 complete
 - **US3 (P3)**: Depends on US1 complete — independent of US2
-- **US4 (P4)**: Depends on US1 complete — independent of US2, US3
-- **US5 (P5)**: Depends on US2 + US3 complete (container services need working implementations)
+- **US4 (P4)**: Depends on US2 + US3 complete (container services need working implementations)
 
 ### Within Each User Story
 
@@ -247,7 +217,7 @@ improvements that span multiple user stories.
 
 ### Phase 1 (Setup)
 ```
-Parallel: T002, T003, T004, T005 — four plugin pyproject.toml files, different paths
+Parallel: T002, T003, T005 — three plugin pyproject.toml files, different paths
 Then: T001 (dirs), T006 (root pyproject)
 ```
 
@@ -267,11 +237,11 @@ Parallel: T024, T025 (config + docker-compose)
 Then: T026 (integration tests)
 ```
 
-### US5 (CI/CD)
+### US4 (CI/CD)
 ```
-Parallel: T039, T040, T041 (three Dockerfiles)
+Parallel: T039, T040 (two Dockerfiles)
 Sequential: T042 → T043 (services.json must exist before workflow reads it)
-Parallel: T044, T045, T046, T047 (test workflow + K8s manifests)
+Parallel: T044, T045, T046 (test workflow + K8s manifests)
 ```
 
 ---
@@ -292,17 +262,15 @@ Parallel: T044, T045, T046, T047 (test workflow + K8s manifests)
 2. US1 → Plugin system works → **demo: install any plugin**
 3. US2 → Runtime intelligence → **demo: "show what ran during this request"**
 4. US3 → Dev traces → **demo: "show concrete implementations that ran"**
-5. US4 → Project knowledge → **demo: "which code has no spec?"**
-6. US5 → CI/CD → **demo: `git tag v0.1.0` builds all images automatically**
+5. US4 → CI/CD → **demo: `git tag v0.1.0` builds all images automatically**
 
 ### Parallel Team Strategy
 
-With 3 developers after US1 is complete:
+With 2 developers after US1 is complete:
 - Developer A: US2 (OTEL Plugin)
 - Developer B: US3 (Xdebug Plugin)
-- Developer C: US4 (Memory Plugin)
 
-All three complete independently, then US5 (CI/CD) begins.
+Both complete independently, then US4 (CI/CD) begins.
 
 ---
 

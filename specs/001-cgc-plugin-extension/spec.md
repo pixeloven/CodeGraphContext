@@ -4,7 +4,7 @@
 **Created**: 2026-03-14
 **Status**: Draft
 **Input**: Based on research in `cgc-extended-spec.md` — extend CGC to support runtime
-memory and project knowledge layers via a plugin/addon pattern for CLI and MCP, with a
+runtime intelligence layers via a plugin/addon pattern for CLI and MCP, with a
 common CI/CD pipeline for Docker/K8s images.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -18,7 +18,7 @@ MCP tools, publishes it separately, and CGC discovers and loads it automatically
 installed.
 
 **Why this priority**: All other stories depend on a functioning plugin system. Without
-the foundation, the runtime, memory, and CI/CD stories cannot be independently developed
+the foundation, the runtime, and CI/CD stories cannot be independently developed
 or released. This is the architectural backbone that makes the project composable.
 
 **Independent Test**: Install CGC core alone and verify it starts correctly. Then install
@@ -115,44 +115,12 @@ repository.
 
 ---
 
-### User Story 4 - Project Knowledge via Memory Plugin (Priority: P4)
-
-A developer or AI assistant wants to store and retrieve structured project knowledge
-(specifications, decisions, research notes, known bugs) alongside the code graph. When
-the memory plugin is enabled, the AI assistant can link stored knowledge entities to
-specific classes or methods that CGC has indexed, enabling queries like "show me the
-spec for the payment service and which methods implement it" or "which running code has
-no associated specification."
-
-**Why this priority**: The memory plugin uses an existing third-party service with no
-custom ingestion logic to build. It delivers high value (project knowledge linked to
-code) with the lowest implementation cost of the three data-layer plugins. Its queries
-are most powerful in combination with the static layer already provided by core CGC.
-
-**Independent Test**: Enable the memory plugin. Using the MCP tools it exposes, store a
-knowledge entity describing a specific class that exists in an indexed repository. Query
-for all classes that have associated knowledge entities and verify the stored entity
-appears linked to the correct code node.
-
-**Acceptance Scenarios**:
-
-1. **Given** the memory plugin is enabled and a repository is indexed, **When** a user
-   stores a knowledge entity describing a class, **Then** the entity is linked to the
-   corresponding graph node and retrievable via an MCP tool query.
-2. **Given** knowledge entities exist in the graph, **When** an AI assistant asks "which
-   code has no associated specification", **Then** the MCP tool returns the set of
-   indexed code nodes that have no memory entity linked to them.
-3. **Given** the memory plugin is not installed, **When** CGC starts, **Then** no
-   memory-related commands or tools appear and the core graph is unaffected.
-
----
-
-### User Story 5 - Automated Container Builds via Common CI/CD Pipeline (Priority: P5)
+### User Story 4 - Automated Container Builds via Common CI/CD Pipeline (Priority: P4)
 
 A maintainer releasing a new version of CGC or any plugin wants every service that
 exposes an MCP endpoint to automatically build a versioned, production-ready container
 image and publish it to a container registry. The build pipeline is shared across all
-services (CGC core, OTEL plugin, Xdebug plugin, memory plugin), so adding a new plugin
+services (CGC core, OTEL plugin, Xdebug plugin), so adding a new plugin
 service requires minimal CI configuration changes. The resulting images are compatible
 with both Docker Compose and Kubernetes deployment patterns.
 
@@ -262,18 +230,6 @@ name change.
 - **FR-021**: The Xdebug plugin MUST be configurable as a development/staging-only
   service, excluded from production deployments without changing core configuration.
 
-**Memory Plugin**
-
-- **FR-022**: The memory plugin MUST expose MCP tools for storing, retrieving, updating,
-  and searching structured knowledge entities (specifications, decisions, research,
-  bugs, feature context).
-- **FR-023**: The memory plugin MUST allow knowledge entities to be linked to specific
-  code nodes (classes, methods) already present in the graph.
-- **FR-024**: The memory plugin MUST support full-text search across stored knowledge
-  entities via an MCP query tool.
-- **FR-025**: The memory plugin MUST expose an MCP tool that returns all code nodes
-  lacking any associated knowledge entity, to identify undocumented code.
-
 **CI/CD Pipeline**
 
 - **FR-026**: The pipeline MUST build a versioned container image for each plugin
@@ -308,8 +264,6 @@ name change.
 - **RuntimeNode**: A graph node produced by the OTEL or Xdebug plugin representing an
   observed execution event (span, stack frame). Carries a `source` property identifying
   its origin layer.
-- **KnowledgeEntity**: A structured project knowledge record (spec, decision, research,
-  bug, feature) stored by the memory plugin. Can be linked to static code nodes.
 - **ContainerImage**: A versioned, publishable artifact for a plugin service. Produced
   by the CI/CD pipeline and tagged with the release version.
 
@@ -322,14 +276,14 @@ name change.
   and without reading CGC core source code.
 - **SC-002**: Installing or uninstalling a plugin requires no changes to CGC core
   configuration files — zero manual edits.
-- **SC-003**: CGC with all three plugins enabled starts in under 15 seconds on standard
+- **SC-003**: CGC with all plugins enabled starts in under 15 seconds on standard
   developer hardware.
 - **SC-004**: Runtime span data from an instrumented request appears in the graph within
   10 seconds of the request completing under normal load conditions.
-- **SC-005**: An AI assistant using the combined graph (static + runtime + memory) can
-  answer cross-layer queries (e.g., "what code ran without a spec") that are impossible
-  with static analysis alone — validated by 5 documented canonical query examples that
-  all return correct results.
+- **SC-005**: An AI assistant using the combined graph (static + runtime) can
+  answer cross-layer queries (e.g., "what code paths are never executed at runtime") that
+  are impossible with static analysis alone — validated by documented canonical query
+  examples that all return correct results.
 - **SC-006**: The CI/CD pipeline builds and publishes all plugin service images in a
   single pipeline run triggered by a version tag — zero manual steps required after
   tagging.
@@ -353,9 +307,6 @@ name change.
 - Plugin authors are expected to be Python developers familiar with the CGC graph schema.
 - The OTEL plugin is the primary runtime layer for production use; Xdebug is dev/staging
   only, consistent with the research document's stated intent.
-- The memory plugin wraps an existing third-party service (`mcp/neo4j-memory` Docker
-  image) rather than implementing custom storage logic; the plugin is primarily a
-  packaging and wiring concern.
 - CI/CD pipeline targets GitHub Actions as the execution environment, consistent with
   the project's existing workflows.
 - Container registry target is determined by project maintainers at implementation time

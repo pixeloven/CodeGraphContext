@@ -22,13 +22,5 @@
     "image": "cgc-plugin-xdebug",
     "health_check": "tcp_connect",
     "description": "Xdebug DBGp call-stack listener"
-  },
-  {
-    "name": "cgc-plugin-memory",
-    "path": "plugins/cgc-plugin-memory",
-    "dockerfile": "Dockerfile",
-    "image": "cgc-plugin-memory",
-    "health_check": "http_health",
-    "description": "Project knowledge memory MCP server"
   }
 ]

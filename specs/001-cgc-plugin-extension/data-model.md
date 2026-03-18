@@ -222,36 +222,6 @@ Represents a single frame in a PHP execution call stack captured via DBGp.
 
 ---
 
-### Memory Plugin Nodes
-
-#### Memory
-
-Represents a structured knowledge entity (spec, decision, research, bug, feature).
-Provided by the `mcp/neo4j-memory` service; schema documented here for cross-layer
-query reference.
-
-| Property | Type | Required | Index | Description |
-|---|---|---|---|---|
-| `id` | string | ✅ | UNIQUE | UUID |
-| `name` | string | ✅ | FULLTEXT | Human-readable entity name |
-| `entity_type` | string | ✅ | FULLTEXT | `spec`, `decision`, `research`, `bug`, `feature`, `integration` |
-| `created_at` | datetime | ✅ | — | Creation timestamp |
-| `updated_at` | datetime | ✅ | — | Last update timestamp |
-| `source` | string | ✅ | — | Always `"memory"` |
-
----
-
-#### Observation
-
-A single piece of content attached to a Memory entity.
-
-| Property | Type | Required | Index | Description |
-|---|---|---|---|---|
-| `content` | string | ✅ | FULLTEXT | The observation text |
-| `created_at` | datetime | ✅ | — | Creation timestamp |
-
----
-
 ## Part 3: Graph Relationship Extensions
 
 New relationships added by the plugins. Existing CGC relationships are not modified.
@@ -279,18 +249,6 @@ New relationships added by the plugins. Existing CGC relationships are not modif
 
 ---
 
-### Memory Relationships
-
-| Relationship | From → To | Properties | Description |
-|---|---|---|---|
-| `HAS_OBSERVATION` | Memory → Observation | — | Knowledge entity has content |
-| `RELATES_TO` | Memory → Memory | `relation: string` | Inter-entity links |
-| `DESCRIBES` | Memory → Class | — | Knowledge about a class |
-| `DESCRIBES` | Memory → Method | — | Knowledge about a method |
-| `COVERS` | Memory → Span | — | Knowledge about a runtime operation |
-
----
-
 ## Part 4: Schema Migration
 
 All new node labels and relationship types are additive — they do not modify existing
@@ -311,10 +269,4 @@ CREATE INDEX span_route IF NOT EXISTS FOR (s:Span) ON (s.http_route);
 -- Xdebug constraints & indexes
 CREATE CONSTRAINT frame_id IF NOT EXISTS FOR (sf:StackFrame) REQUIRE sf.frame_id IS UNIQUE;
 CREATE INDEX frame_fqn IF NOT EXISTS FOR (sf:StackFrame) ON (sf.fqn);
-
--- Memory full-text indexes (managed by mcp/neo4j-memory service)
-CREATE FULLTEXT INDEX memory_search IF NOT EXISTS
-  FOR (m:Memory) ON EACH [m.name, m.entity_type];
-CREATE FULLTEXT INDEX observation_search IF NOT EXISTS
-  FOR (o:Observation) ON EACH [o.content];
 ```

@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        plugin: [cgc-plugin-stub, cgc-plugin-otel, cgc-plugin-xdebug, cgc-plugin-memory]
+        plugin: [cgc-plugin-stub, cgc-plugin-otel, cgc-plugin-xdebug]
       fail-fast: false
 
     steps:

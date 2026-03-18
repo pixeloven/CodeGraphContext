@@ -29,10 +29,3 @@ CREATE CONSTRAINT frame_id IF NOT EXISTS
 
 CREATE INDEX frame_fqn IF NOT EXISTS
   FOR (sf:StackFrame) ON (sf.fqn);
-
-// ── Memory Plugin: Memory + Observation nodes ──────────────────────────────
-CREATE FULLTEXT INDEX memory_search IF NOT EXISTS
-  FOR (m:Memory) ON EACH [m.name, m.entity_type];
-
-CREATE FULLTEXT INDEX observation_search IF NOT EXISTS
-  FOR (o:Observation) ON EACH [o.content];

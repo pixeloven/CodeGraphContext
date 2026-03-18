@@ -43,7 +43,6 @@ Expected: all services show `healthy` or `running`.
 | neo4j | 7474, 7687 | http://localhost:7474 → Neo4j Browser |
 | cgc-otel-processor | 5317 | `docker logs cgc-otel-processor` → no errors |
 | otel-collector | 4317, 4318 | `docker logs cgc-otel-collector` → "Everything is ready" |
-| cgc-memory | 8766 | `docker logs cgc-memory` → no errors |
 
 ### 3. Verify graph schema initialized
 
@@ -59,8 +58,6 @@ Expected: `service_name`, `trace_id`, `span_id`, `frame_id` constraints present.
 SHOW INDEXES
 ```
 
-Expected: `memory_search`, `observation_search` FULLTEXT indexes present.
-
 ---
 
 ## Option B: Python (No Docker)
@@ -73,7 +70,6 @@ pip install -e .
 pip install -e plugins/cgc-plugin-stub
 pip install -e plugins/cgc-plugin-otel
 pip install -e plugins/cgc-plugin-xdebug
-pip install -e plugins/cgc-plugin-memory
 ```
 
 Verify plugin discovery:
@@ -82,7 +78,7 @@ PYTHONPATH=src cgc plugin list
 # Should show all four plugins as "loaded"
 
 PYTHONPATH=src cgc --help
-# Should show: stub, otel, xdebug, memory command groups
+# Should show: stub, otel, xdebug command groups
 ```
 
 ---
@@ -103,34 +99,6 @@ PYTHONPATH=src cgc stub hello --name "Alice"
 Via pytest (no install needed for mocked path):
 ```bash
 PYTHONPATH=src pytest tests/unit/plugin/test_plugin_registry.py -v
-```
-
----
-
-### Memory Plugin
-
-**Requires**: Neo4j running at `bolt://localhost:7687`
-
-```bash
-# Store a spec
-PYTHONPATH=src cgc memory store \
-    --type spec \
-    --name "OrderController spec" \
-    --content "Handles order creation and payment transitions"
-
-# Search
-PYTHONPATH=src cgc memory search --query "order"
-
-# List undocumented classes
-PYTHONPATH=src cgc memory undocumented
-
-# Status
-PYTHONPATH=src cgc memory status
-```
-
-Verify in Neo4j Browser:
-```cypher
-MATCH (m:Memory) RETURN m.name, m.entity_type, m.content LIMIT 10
 ```
 
 ---
@@ -224,11 +192,10 @@ MATCH (sf:StackFrame)-[:RESOLVES_TO]->(m:Method) RETURN sf.method_name, m.fqn LI
 After running all plugins with real data, validate the cross-layer queries:
 
 ```bash
-# Methods running with no spec
+# Execution path for a route
 PYTHONPATH=src cgc query "
-MATCH (m:Method)<-[:CORRELATES_TO]-(s:Span)
-WHERE NOT EXISTS { MATCH (mem:Memory)-[:DESCRIBES]->(m) }
-RETURN m.fqn, count(s) AS executions
+MATCH (s:Span {http_route: '/api/orders'})-[:CORRELATES_TO]->(m:Method)
+RETURN m.fqn, count(s) AS executions, avg(s.duration_ms) AS avg_duration_ms
 ORDER BY executions DESC LIMIT 10
 "
 
@@ -241,7 +208,7 @@ RETURN m.fqn, m.class_name LIMIT 10
 "
 ```
 
-See `docs/plugins/cross-layer-queries.md` for all 5 canonical queries.
+See `docs/plugins/cross-layer-queries.md` for canonical queries.
 
 ---
 
@@ -265,4 +232,3 @@ docker compose -f docker-compose.plugin-stack.yml down -v
 | `cgc plugin list` shows plugin as failed | Plugin not installed | `pip install -e plugins/cgc-plugin-<name>` |
 | Spans sent but no graph nodes | Filter routes dropping them | Check `OTEL_FILTER_ROUTES`; default drops `/health` etc. |
 | Xdebug not connecting | Wrong `client_host` | Use Docker host IP, not `localhost`, when PHP is in Docker |
-| Memory search returns nothing | FULLTEXT index not created | Run `config/neo4j/init.cypher` manually in Neo4j Browser |

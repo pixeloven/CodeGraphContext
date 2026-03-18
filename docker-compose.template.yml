@@ -41,7 +41,7 @@ services:
       - falkordb
 
   # Optional: Neo4j database (if you prefer Neo4j over FalkorDB)
-  # Required when using any CGC plugin (otel, memory, xdebug).
+  # Required when using any CGC plugin (otel, xdebug).
   neo4j:
     image: neo4j:5.15.0
     container_name: cgc-neo4j

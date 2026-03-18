@@ -1,13 +1,11 @@
 # Cross-Layer Cypher Queries
 
-These five canonical queries validate **SC-005** (cross-layer intelligence) by joining
-static code analysis nodes (Class, Method) with runtime nodes (Span, StackFrame) and
-project knowledge nodes (Memory, Observation).
+These canonical queries validate **SC-005** (cross-layer intelligence) by joining
+static code analysis nodes (Class, Method) with runtime nodes (Span, StackFrame).
 
 All queries assume:
 - CGC has indexed a PHP/Laravel repository (Method, Class, File nodes exist)
 - OTEL or Xdebug plugin has written at least some runtime data
-- Memory plugin has stored at least some project knowledge entries
 
 ---
 
@@ -37,35 +35,7 @@ LIMIT 20
 
 ---
 
-## 2. Recently Executed Methods With No Spec
-
-Identify code that has been observed at runtime but has no Memory/Observation linked to it.
-Useful for finding undocumented hot paths.
-
-```cypher
-MATCH (m:Method)<-[:CORRELATES_TO]-(s:Span)
-WHERE NOT EXISTS {
-  MATCH (mem:Memory)-[:DESCRIBES]->(m)
-}
-RETURN
-  m.fqn                  AS method,
-  count(s)               AS executions,
-  max(s.start_time_ns)   AS last_seen_ns
-ORDER BY executions DESC
-LIMIT 20
-```
-
-**Expected result schema**:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `method` | string | FQN of the method |
-| `executions` | int | Total observed executions |
-| `last_seen_ns` | int | Unix nanosecond timestamp of most recent span |
-
----
-
-## 3. Cross-Service Call Chains
+## 2. Cross-Service Call Chains
 
 Trace spans that exit the local service boundary (CLIENT kind with `peer.service` set),
 showing the full service-to-service call path.
@@ -96,36 +66,7 @@ LIMIT 25
 
 ---
 
-## 4. Specs Describing Recently-Active Code
-
-Show Memory entries that describe code observed at runtime in the last N spans.
-Surfaces "well-documented hot paths".
-
-```cypher
-MATCH (mem:Memory)-[:DESCRIBES]->(m:Method)<-[:CORRELATES_TO]-(s:Span)
-RETURN
-  mem.name               AS spec_name,
-  mem.entity_type        AS spec_type,
-  m.fqn                  AS method,
-  count(s)               AS executions,
-  collect(DISTINCT mem.content)[0..1][0] AS spec_excerpt
-ORDER BY executions DESC
-LIMIT 20
-```
-
-**Expected result schema**:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `spec_name` | string | Memory node name |
-| `spec_type` | string | Entity type (e.g. `spec`, `note`, `adr`) |
-| `method` | string | FQN of the described method |
-| `executions` | int | Runtime execution count |
-| `spec_excerpt` | string | First 0–1 items of content for context |
-
----
-
-## 5. Static Code Never Observed at Runtime
+## 3. Static Code Never Observed at Runtime
 
 Find Method nodes with no CORRELATES_TO span and no StackFrame. Surfaces dead code
 candidates or code paths never triggered in the current environment.
@@ -158,7 +99,7 @@ LIMIT 50
 Via CGC CLI:
 
 ```bash
-cgc query "MATCH (m:Method)<-[:CORRELATES_TO]-(s:Span) WHERE NOT EXISTS { MATCH (mem:Memory)-[:DESCRIBES]->(m) } RETURN m.fqn, count(s) AS executions ORDER BY executions DESC LIMIT 20"
+cgc query "MATCH (s:Span {http_route: '/api/orders'})-[:CORRELATES_TO]->(m:Method) RETURN m.fqn, count(s) AS executions ORDER BY executions DESC LIMIT 20"
 ```
 
 Via MCP tool (`otel_cross_layer_query`):
@@ -166,7 +107,7 @@ Via MCP tool (`otel_cross_layer_query`):
 ```json
 {
   "tool": "otel_cross_layer_query",
-  "arguments": {"query_type": "unspecced_running_code"}
+  "arguments": {"query_type": "never_observed"}
 }
 ```
 

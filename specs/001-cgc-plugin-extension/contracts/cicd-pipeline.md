@@ -39,12 +39,6 @@ that MUST be edited to add or remove a service from the pipeline.
         "dockerfile": "plugins/cgc-plugin-otel/Dockerfile",
         "health_check": "grpc_ping"
     },
-    {
-        "name": "cgc-plugin-memory",
-        "path": "plugins/cgc-plugin-memory",
-        "dockerfile": "plugins/cgc-plugin-memory/Dockerfile",
-        "health_check": "http_health"
-    }
 ]
 ```
 

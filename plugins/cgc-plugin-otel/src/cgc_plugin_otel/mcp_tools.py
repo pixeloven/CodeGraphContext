@@ -29,14 +29,14 @@ _TOOLS: dict[str, dict] = {
         "name": "otel_cross_layer_query",
         "description": (
             "Run a pre-built cross-layer query combining static code structure with runtime spans.  "
-            "query_type options: unspecced_running_code | cross_service_calls | recent_executions"
+            "query_type options: never_observed | cross_service_calls | recent_executions"
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query_type": {
                     "type": "string",
-                    "enum": ["unspecced_running_code", "cross_service_calls", "recent_executions"],
+                    "enum": ["never_observed", "cross_service_calls", "recent_executions"],
                     "description": "The cross-layer query to run",
                 },
                 "limit": {"type": "integer", "default": 20},
@@ -47,11 +47,13 @@ _TOOLS: dict[str, dict] = {
 }
 
 _CROSS_LAYER_QUERIES: dict[str, str] = {
-    "unspecced_running_code": (
-        "MATCH (sp:Span)-[:CORRELATES_TO]->(m:Method) "
-        "WHERE NOT EXISTS { MATCH (m)<-[:DESCRIBES]-(:Memory) } "
-        "RETURN m.fqn AS fqn, count(sp) AS run_count "
-        "ORDER BY run_count DESC LIMIT $limit"
+    "never_observed": (
+        "MATCH (m:Method) "
+        "WHERE NOT EXISTS { MATCH (m)<-[:CORRELATES_TO]-(:Span) } "
+        "AND NOT EXISTS { MATCH (m)<-[:RESOLVES_TO]-(:StackFrame) } "
+        "AND m.fqn IS NOT NULL "
+        "RETURN m.fqn AS fqn, m.class_name AS class_name "
+        "ORDER BY m.class_name, m.fqn LIMIT $limit"
     ),
     "cross_service_calls": (
         "MATCH (sp:Span)-[:CALLS_SERVICE]->(svc:Service) "

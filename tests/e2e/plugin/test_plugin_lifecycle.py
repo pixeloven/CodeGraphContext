@@ -341,18 +341,20 @@ class TestOtelPluginLifecycle:
     def test_cross_layer_query_structure_is_valid(self):
         """
         Verifies the canonical cross-layer Cypher query compiles (parse-only check).
-        Tests SC-005: unspecced running code query.
+        Tests SC-005: static code never observed at runtime query.
         """
         cross_layer_query = (
-            "MATCH (m:Method)<-[:CORRELATES_TO]-(s:Span) "
-            "WHERE NOT EXISTS { MATCH (mem:Memory)-[:DESCRIBES]->(m) } "
-            "RETURN m.fqn, count(s) AS executions "
-            "ORDER BY executions DESC LIMIT 20"
+            "MATCH (m:Method) "
+            "WHERE NOT EXISTS { MATCH (m)<-[:CORRELATES_TO]-(:Span) } "
+            "AND NOT EXISTS { MATCH (m)<-[:RESOLVES_TO]-(:StackFrame) } "
+            "AND m.fqn IS NOT NULL "
+            "RETURN m.fqn, m.class_name "
+            "ORDER BY m.class_name, m.fqn LIMIT 20"
         )
         # Structural validation: query contains all expected clauses
         assert "CORRELATES_TO" in cross_layer_query
-        assert "DESCRIBES" in cross_layer_query
-        assert "executions" in cross_layer_query
+        assert "RESOLVES_TO" in cross_layer_query
+        assert "m.fqn" in cross_layer_query
         assert "LIMIT 20" in cross_layer_query
 
 

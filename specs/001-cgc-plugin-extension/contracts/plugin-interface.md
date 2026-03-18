@@ -214,7 +214,7 @@ To prevent conflicts in a shared namespace, plugin-registered names MUST be pref
 | CLI command group | plugin name (kebab-case) | `cgc otel ...` |
 | MCP tool names | `<pluginname>_<toolname>` | `otel_query_spans` |
 | Graph node labels | PascalCase, no prefix needed | `Span`, `StackFrame` |
-| Graph `source` values | `"runtime_<protocol>"` or `"memory"` | `"runtime_otel"` |
+| Graph `source` values | `"runtime_<protocol>"` | `"runtime_otel"` |
 
 ---
 

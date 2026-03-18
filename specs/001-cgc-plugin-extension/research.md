@@ -127,9 +127,8 @@ propagates an exception to the host process.
 
 **Startup summary**: After all plugins are processed, CGC logs:
 ```
-CGC started with 19 built-in tools and 6 plugin tools (1 plugin failed).
+CGC started with 19 built-in tools and 4 plugin tools (1 plugin failed).
   ✓ cgc-plugin-otel      4 tools
-  ✓ cgc-plugin-memory    2 tools
   ✗ cgc-plugin-xdebug    SKIPPED: missing dependency 'dbgp'
 ```
 
@@ -189,26 +188,7 @@ risk. The plugin MUST default to disabled and require explicit opt-in.
 
 ---
 
-## R-008: Memory Plugin Architecture
-
-**Decision**: The memory plugin is a thin wrapper. The underlying storage is provided by
-the `mcp/neo4j-memory` Docker image (official, maintained). The plugin package in CGC:
-1. Provides a `cgc plugin memory enable/disable/status` CLI command group
-2. Proxies MCP tool definitions so they appear in CGC's tool listing even though the
-   actual service runs separately
-3. Provides a `docker-compose.yml` snippet and Kubernetes manifests for deployment
-
-**Rationale**: The research document explicitly states "Why mcp/neo4j-memory rather than
-a custom memory service? It's maintained, well-documented, and covers the generic memory
-use case well." Building custom memory storage would violate the Simplicity principle
-(V) — unnecessary complexity for solved problems.
-
-**Neo4j sharing**: The memory plugin connects to the same Neo4j instance as CGC core,
-enabling cross-layer queries (`(Memory)-[:DESCRIBES]->(Method)`) as specified.
-
----
-
-## R-009: CI/CD Pipeline Architecture
+## R-008: CI/CD Pipeline Architecture
 
 **Decision**: GitHub Actions matrix strategy with `fail-fast: false`. Services defined
 in `.github/services.json` as a JSON array. Shared logic for checkout, Docker login,
@@ -238,20 +218,17 @@ logic changes.
 
 ---
 
-## R-010: Monorepo Package Layout
+## R-009: Monorepo Package Layout
 
 **Decision**: Plugin packages live in `plugins/` subdirectory, each as an independently
 installable Python package with its own `pyproject.toml`. Plugin services that run as
-standalone containers (OTEL, Xdebug) also have a `Dockerfile` in their directory. The
-memory plugin's "service" is the third-party `mcp/neo4j-memory` image; its plugin
-directory contains only the Python package code and deployment manifests.
+standalone containers (OTEL, Xdebug) also have a `Dockerfile` in their directory.
 
 **Development installation**:
 ```bash
 pip install -e .                             # CGC core
 pip install -e plugins/cgc-plugin-otel
 pip install -e plugins/cgc-plugin-xdebug
-pip install -e plugins/cgc-plugin-memory
 ```
 
 After this, `cgc --help` shows plugin commands automatically.
@@ -260,7 +237,7 @@ After this, `cgc --help` shows plugin commands automatically.
 ```bash
 pip install codegraphcontext                 # Core only
 pip install codegraphcontext[otel]           # Core + OTEL plugin (via extras)
-pip install codegraphcontext[memory]         # Core + memory plugin
+pip install codegraphcontext[all]            # Core + all plugins
 ```
 
 This is achieved by declaring plugins as optional extras in the root `pyproject.toml`.

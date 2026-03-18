@@ -53,13 +53,9 @@ otel = [
 xdebug = [
     "cgc-plugin-xdebug>=0.1.0",
 ]
-memory = [
-    "cgc-plugin-memory>=0.1.0",
-]
 all = [
     "cgc-plugin-otel>=0.1.0",
     "cgc-plugin-xdebug>=0.1.0",
-    "cgc-plugin-memory>=0.1.0",
 ]
 
 [project.urls]

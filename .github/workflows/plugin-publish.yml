@@ -89,10 +89,6 @@ jobs:
         if: matrix.health_check == 'grpc_ping'
         run: docker run --rm smoke-test/${{ matrix.image }}:ci python -c "import grpc; print('gRPC OK')"
 
-      - name: Smoke test — Python import
-        if: matrix.health_check == 'http_health'
-        run: docker run --rm smoke-test/${{ matrix.image }}:ci python -c "import cgc_plugin_memory; print('memory OK')"
-
       - name: Smoke test — socket
         if: matrix.health_check == 'tcp_connect'
         run: docker run --rm smoke-test/${{ matrix.image }}:ci python -c "import socket; socket.socket(); print('socket OK')"

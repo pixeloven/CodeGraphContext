@@ -57,9 +57,10 @@ class OTLPSpanReceiver:
     plugin still loads but logs a warning.
     """
 
-    def __init__(self, writer: Any, filter_routes: list[str] | None = None) -> None:
+    def __init__(self, writer: Any, filter_routes: list[str] | None = None, loop: asyncio.AbstractEventLoop | None = None) -> None:
         self._writer = writer
         self._filter_routes = filter_routes or _FILTER_ROUTES
+        self._loop = loop
 
     def Export(self, request: Any, context: Any) -> Any:
         """Handle ExportTraceServiceRequest — called by gRPC framework."""
@@ -97,9 +98,9 @@ class OTLPSpanReceiver:
                         attributes=attrs,
                         service_name=service_name,
                     )
-                    # Schedule on the event loop — receiver runs in gRPC thread pool
-                    loop = asyncio.get_event_loop()
-                    asyncio.run_coroutine_threadsafe(self._writer.enqueue(span_dict), loop)
+                    # Schedule on the main event loop — Export() runs in gRPC thread pool
+                    if self._loop is not None:
+                        asyncio.run_coroutine_threadsafe(self._writer.enqueue(span_dict), self._loop)
 
         return ExportTraceServiceResponse()
 
@@ -129,7 +130,7 @@ def main() -> None:
     asyncio.set_event_loop(loop)
 
     writer = AsyncOtelWriter(db_manager)
-    servicer = OTLPSpanReceiver(writer)
+    servicer = OTLPSpanReceiver(writer, loop=loop)
 
     from concurrent.futures import ThreadPoolExecutor
 

@@ -43,8 +43,9 @@ instrumented app → generate OTEL spans → query cross-layer graph**.
 ## Prerequisites
 
 - Docker and Docker Compose v2+
-- `cgc` CLI installed (for indexing sample code)
 - ~2 GB RAM available for all containers
+
+No local CGC install required — indexing runs inside a container.
 
 ## Quick Start
 
@@ -52,13 +53,53 @@ instrumented app → generate OTEL spans → query cross-layer graph**.
 # From the repository root:
 cd samples/
 
-# Start everything (Neo4j + OTEL stack + 3 sample apps)
-docker compose up -d
+# 1. Build and start everything (Neo4j + OTEL stack + 3 sample apps)
+docker compose up -d --build
 
-# Wait for services to start (especially Neo4j ~30s)
-docker compose logs -f   # Ctrl+C when ready
+# 2. Wait for Neo4j to become healthy (~30s)
+docker compose logs -f neo4j   # wait for "Started", then Ctrl+C
 
-# Run the automated smoke test
+# 3. Start a CGC indexer container (stays alive for indexing commands)
+docker run --rm -d --name cgc-core-indexer \
+  --network samples_cgc-network \
+  -e DATABASE_TYPE=neo4j \
+  -e NEO4J_URI=bolt://neo4j:7687 \
+  -e NEO4J_USERNAME=neo4j \
+  -e NEO4J_PASSWORD=codegraph123 \
+  -v "$(cd .. && pwd)":/workspace \
+  samples-cgc-core:latest sleep 3600
+
+# 4. Index all three sample apps
+docker exec cgc-core-indexer cgc index /workspace/samples/php-laravel --database-type neo4j
+docker exec cgc-core-indexer cgc index /workspace/samples/python-fastapi --database-type neo4j
+docker exec cgc-core-indexer cgc index /workspace/samples/ts-express-gateway --database-type neo4j
+
+# 5. Generate traffic (sends requests to all sample app routes)
+for i in 1 2 3; do
+  curl -sf http://localhost:8080/api/orders > /dev/null
+  curl -sf -X POST http://localhost:8080/api/orders \
+    -H "Content-Type: application/json" -d "{\"name\":\"order-$i\",\"quantity\":$i}" > /dev/null
+  curl -sf http://localhost:8081/api/orders > /dev/null
+  curl -sf -X POST http://localhost:8081/api/orders \
+    -H "Content-Type: application/json" -d "{\"name\":\"order-$i\",\"quantity\":$i}" > /dev/null
+  curl -sf http://localhost:8082/api/dashboard > /dev/null
+  curl -sf http://localhost:8082/api/orders > /dev/null
+done
+
+# 6. Wait ~15s for span ingestion, then explore at http://localhost:7474
+#    (user: neo4j, password: codegraph123)
+
+# Or run the automated smoke test:
+bash smoke-all.sh
+```
+
+### Automated Smoke Test
+
+The smoke script automates steps 3-6 above. It checks for the `cgc-core-indexer`
+container and uses it for indexing. If the container isn't running, it prints
+instructions for starting it.
+
+```bash
 bash smoke-all.sh
 ```
 

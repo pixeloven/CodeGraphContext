@@ -158,9 +158,9 @@ class AsyncOtelWriter:
     async def _flush_batch(self, spans: list[dict]) -> None:
         try:
             driver = self._db.get_driver()
-            async with driver.session() as session:
+            with driver.session() as session:
                 for span in spans:
-                    await self._write_span(session, span)
+                    self._write_span_sync(session, span)
             logger.debug("Flushed %d spans to Neo4j", len(spans))
         except Exception as exc:
             logger.error("Neo4j flush failed (%s) — moving %d spans to DLQ", exc, len(spans))
@@ -170,18 +170,18 @@ class AsyncOtelWriter:
                 except asyncio.QueueFull:
                     logger.warning("DLQ full — permanently dropping span %s", span.get("span_id"))
 
-    async def _write_span(self, session: Any, span: dict) -> None:
-        await session.run(_MERGE_SERVICE, service_name=span["service_name"])
-        await session.run(_MERGE_TRACE, trace_id=span["trace_id"])
-        await session.run(_MERGE_SPAN, **span)
-        await session.run(_LINK_SPAN_TO_TRACE, span_id=span["span_id"], trace_id=span["trace_id"])
-        await session.run(_LINK_SPAN_TO_SERVICE, span_id=span["span_id"], service_name=span["service_name"])
+    def _write_span_sync(self, session: Any, span: dict) -> None:
+        session.run(_MERGE_SERVICE, service_name=span["service_name"])
+        session.run(_MERGE_TRACE, trace_id=span["trace_id"])
+        session.run(_MERGE_SPAN, **span)
+        session.run(_LINK_SPAN_TO_TRACE, span_id=span["span_id"], trace_id=span["trace_id"])
+        session.run(_LINK_SPAN_TO_SERVICE, span_id=span["span_id"], service_name=span["service_name"])
         if span.get("parent_span_id"):
-            await session.run(_LINK_PARENT_SPAN, span_id=span["span_id"], parent_span_id=span["parent_span_id"])
+            session.run(_LINK_PARENT_SPAN, span_id=span["span_id"], parent_span_id=span["parent_span_id"])
         if span.get("cross_service") and span.get("peer_service"):
-            await session.run(_LINK_CROSS_SERVICE, span_id=span["span_id"], peer_service=span["peer_service"])
+            session.run(_LINK_CROSS_SERVICE, span_id=span["span_id"], peer_service=span["peer_service"])
         if span.get("fqn"):
-            await session.run(_CORRELATE_TO_METHOD, span_id=span["span_id"])
+            session.run(_CORRELATE_TO_METHOD, span_id=span["span_id"])
 
     async def _retry_dlq(self) -> None:
         if self._dlq.empty():

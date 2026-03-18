@@ -10,8 +10,6 @@ venv/
 ./.env
 .venv311/
 venv311/
-docker-compose.yml
-
 # PyPI
 dist/
 build/
@@ -31,8 +29,9 @@ coverage.xml
 htmlcov/
 # MCP
 mcp.json
-# Docker
-docker-compose.yml 
+# Docker — root docker-compose.yml is generated per-environment, not tracked.
+# Named compose files (plugin-stack, dev, template) and samples/ ARE tracked.
+/docker-compose.yml
 # macOS system files
 .DS_Store
 src/.DS_Store

@@ -15,7 +15,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import signal
 import socket
+import sys
 import threading
 import xml.etree.ElementTree as ET
 from typing import Any
@@ -221,3 +223,37 @@ class DBGpServer:
             remaining -= len(chunk)
 
         return b"".join(chunks).rstrip(b"\0").decode("utf-8", errors="replace")
+
+
+def main() -> None:
+    """Start the DBGp server as a standalone process."""
+    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+    if os.environ.get(_ENABLED_ENV, "").lower() != "true":
+        logger.warning("Xdebug DBGp server NOT started — set %s=true to enable", _ENABLED_ENV)
+        sys.exit(0)
+
+    try:
+        from codegraphcontext.core import get_database_manager
+        db_manager = get_database_manager()
+    except Exception as exc:
+        logger.error("Cannot connect to database: %s", exc)
+        sys.exit(1)
+
+    from cgc_plugin_xdebug.neo4j_writer import XdebugWriter
+
+    writer = XdebugWriter(db_manager)
+    server = DBGpServer(writer)
+
+    def _shutdown(signum: int, frame: Any) -> None:
+        logger.info("Shutting down Xdebug DBGp server…")
+        server.stop()
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
+    server.listen()
+
+
+if __name__ == "__main__":
+    main()

@@ -164,6 +164,48 @@ improvements that span multiple user stories.
 
 ---
 
+## Phase 7: User Story 5 — Sample Applications for End-to-End Plugin Validation (Priority: P5)
+
+**Goal**: Three sample applications (PHP/Laravel, Python/FastAPI, TypeScript/Express) with
+shared Docker Compose infrastructure and an automated smoke script that validates the full
+pipeline: index code → run instrumented app → generate OTEL spans → query cross-layer graph.
+
+**Independent Test**: `cd samples/ && docker compose up -d && bash smoke-all.sh` — all
+assertions pass (correlates_to warns). Neo4j Browser shows Service, Span, Function, Class
+nodes. `cgc otel list-services` returns `sample-php`, `sample-python`, `sample-ts-gateway`.
+
+### Phase 7a: PHP/Laravel Sample App (T053-T056) — parallel with 7b, 7c
+
+- [ ] T053 [P] [US5] Create `samples/php-laravel/` directory structure: `app/Http/Controllers/`, `app/Services/`, `app/Repositories/`, `routes/`, `database/` — standard Laravel layout
+- [ ] T054 [P] [US5] Implement PHP controllers, services, repositories: `OrderController` (GET/POST `/api/orders`), `OrderService`, `OrderRepository` (SQLite), `HealthController` (`/health`) — cross-class call hierarchy producing meaningful call graph
+- [ ] T055 [P] [US5] Create `samples/php-laravel/Dockerfile` — PHP 8.3 + Composer, OTEL auto-instrumentation (`open-telemetry/opentelemetry-auto-laravel`), Xdebug extension configured for remote debugging, env: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`, `OTEL_SERVICE_NAME=sample-php`
+- [ ] T056 [P] [US5] Create `samples/php-laravel/composer.json` + `samples/php-laravel/README.md` — dependencies, FQN format documentation (`Namespace\Class::method`), route table
+
+### Phase 7b: Python/FastAPI Sample App (T057-T060) — parallel with 7a, 7c
+
+- [ ] T057 [P] [US5] Create `samples/python-fastapi/` directory structure: `app/`, `app/services/`, `app/repositories/` — Python package layout
+- [ ] T058 [P] [US5] Implement FastAPI app: `OrderRouter` (GET/POST `/api/orders`), `OrderService`, `OrderRepository` (SQLite via aiosqlite), `HealthRouter` (`/health`) — service/repository pattern with cross-module calls
+- [ ] T059 [P] [US5] Create `samples/python-fastapi/Dockerfile` — Python 3.12-slim, `opentelemetry-instrument` wrapping `uvicorn`, env: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`, `OTEL_SERVICE_NAME=sample-python`
+- [ ] T060 [P] [US5] Create `samples/python-fastapi/requirements.txt` + `samples/python-fastapi/README.md` — dependencies, Python FQN format documentation (`module.Class.method` vs PHP `Namespace\Class::method`)
+
+### Phase 7c: TypeScript/Express Gateway (T061-T063) — parallel with 7a, 7b
+
+- [ ] T061 [P] [US5] Create `samples/ts-express-gateway/` directory structure: `src/`, `src/routes/`, `src/services/` — TypeScript project layout
+- [ ] T062 [P] [US5] Implement Express gateway: `/api/dashboard` (aggregates from PHP + Python backends via HTTP), `/api/orders` (proxies to PHP backend), `/health` — W3C trace context propagation via `@opentelemetry/api`, CLIENT spans with `peer.service` attribute
+- [ ] T063 [P] [US5] Create `samples/ts-express-gateway/Dockerfile` (multi-stage: build TS → run Node), `package.json`, `tsconfig.json`, `samples/ts-express-gateway/README.md` — documents cross-service span generation and `CALLS_SERVICE` edge formation
+
+### Phase 7d: Shared Infrastructure (T064-T068) — after 7a-7c
+
+- [ ] T064 [US5] Create `samples/KNOWN-LIMITATIONS.md` — documents FQN correlation gap: OTEL writer matches `(m:Method {fqn: sp.fqn})` but CGC creates `Function` nodes without `fqn` property; explains that `CORRELATES_TO` and `RESOLVES_TO` edges will not form; references graph_builder.py:379; states this is a known limitation, not a bug; references future FQN story
+- [ ] T065 [US5] Create `samples/docker-compose.yml` — uses `include` to extend `docker-compose.plugin-stack.yml` from project root; adds 3 app services (`sample-php`, `sample-python`, `sample-ts-gateway`); depends_on otel-collector healthcheck; shared network
+- [ ] T066 [US5] Create `samples/smoke-all.sh` — 6-phase automated validation: (1) wait for services healthy, (2) index sample code via `cgc index`, (3) generate traffic (curl to all routes), (4) wait for span ingestion (poll with timeout), (5) assert via Cypher queries (service_count>=3, span_orders>0, static_functions>0, static_classes>0, cross_service>0, trace_links>0, correlates_to==0 as WARN), (6) summary with pass/warn/fail counts
+- [ ] T067 [US5] Create `samples/README.md` — full walkthrough: prerequisites, architecture diagram (ASCII), `docker compose up` instructions, smoke script usage, Neo4j Browser exploration guide, per-app route tables, link to KNOWN-LIMITATIONS.md
+- [ ] T068 [US5] Write `tests/e2e/plugin/test_sample_apps.py` — E2E test wrapping smoke-all.sh: `subprocess.run(["bash", "samples/smoke-all.sh"])`, asserts exit code 0, parses output for FAIL lines; skipped if Docker not available (`pytest.mark.skipif`)
+
+**Checkpoint**: `cd samples/ && docker compose up -d` starts all services; `bash smoke-all.sh` passes all assertions (correlates_to warns); Neo4j Browser shows populated graph.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -192,6 +234,10 @@ improvements that span multiple user stories.
   - T042 (services.json) before T043 (workflow)
   - T044 (test workflow) parallel with T043
   - T045, T046 (K8s manifests) parallel, independent of T043-T044
+- **US5 (Phase 7)**: Depends on US2 + US4 complete (needs working OTEL plugin + Docker images)
+  - Phase 7a (T053-T056), 7b (T057-T060), 7c (T061-T063) all parallel — three independent apps
+  - Phase 7d (T064-T068) sequential after 7a-7c — shared infrastructure depends on all apps
+  - T064 (KNOWN-LIMITATIONS) → T065 (docker-compose) → T066 (smoke script) → T067 (README) → T068 (E2E test)
 - **Polish (Final Phase)**: Depends on all user stories complete
   - T049, T050, T051 all parallel
   - T052 (quickstart validation) last — sequentially after T048-T051
@@ -202,6 +248,7 @@ improvements that span multiple user stories.
 - **US2 (P2)**: Depends on US1 complete
 - **US3 (P3)**: Depends on US1 complete — independent of US2
 - **US4 (P4)**: Depends on US2 + US3 complete (container services need working implementations)
+- **US5 (P5)**: Depends on US2 + US4 complete (needs working OTEL plugin + Docker infrastructure)
 
 ### Within Each User Story
 
@@ -263,6 +310,7 @@ Parallel: T044, T045, T046 (test workflow + K8s manifests)
 3. US2 → Runtime intelligence → **demo: "show what ran during this request"**
 4. US3 → Dev traces → **demo: "show concrete implementations that ran"**
 5. US4 → CI/CD → **demo: `git tag v0.1.0` builds all images automatically**
+6. US5 → Sample apps → **demo: `docker compose up && bash smoke-all.sh` — full pipeline validated**
 
 ### Parallel Team Strategy
 

@@ -44,7 +44,8 @@ networking, env-var-only config)
 - `./tests/run_tests.sh fast` MUST pass after each phase
 - Xdebug plugin MUST default to disabled (security: TCP listener)
 
-**Scale/Scope**: 2 plugin packages, 1 shared CI/CD pipeline, 4 container services
+**Scale/Scope**: 2 plugin packages, 1 shared CI/CD pipeline, 4 container services,
+3 sample applications (PHP/Laravel, Python/FastAPI, TypeScript/Express)
 
 ## Constitution Check
 
@@ -144,6 +145,29 @@ k8s/
 └── cgc-plugin-otel/
     ├── deployment.yaml
     └── service.yaml
+
+# Sample applications (US5)
+samples/
+├── docker-compose.yml              # Extends plugin-stack + 3 sample apps
+├── smoke-all.sh                    # Automated 6-phase validation script
+├── README.md                       # Full walkthrough with architecture diagram
+├── KNOWN-LIMITATIONS.md            # FQN correlation gap documentation
+├── php-laravel/
+│   ├── Dockerfile                  # PHP 8.3 + OTEL auto-instrumentation + Xdebug
+│   ├── composer.json
+│   ├── README.md
+│   └── app/                        # Controllers, Services, Repositories
+├── python-fastapi/
+│   ├── Dockerfile                  # Python 3.12 + opentelemetry-instrument + uvicorn
+│   ├── requirements.txt
+│   ├── README.md
+│   └── app/                        # FastAPI routers, services, repositories
+└── ts-express-gateway/
+    ├── Dockerfile                  # Multi-stage TS build → Node runtime
+    ├── package.json
+    ├── tsconfig.json
+    ├── README.md
+    └── src/                        # Express routes, services (HTTP proxy)
 ```
 
 **Structure Decision**: Multi-package layout under `plugins/` with independent

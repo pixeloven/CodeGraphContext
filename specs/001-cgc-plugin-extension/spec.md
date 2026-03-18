@@ -154,6 +154,51 @@ name change.
 
 ---
 
+### User Story 5 - Sample Applications for End-to-End Plugin Validation (Priority: P5)
+
+A developer evaluating CGC's plugin ecosystem wants to see the full pipeline in action —
+index code, run an instrumented application, generate OTEL spans, and query the resulting
+cross-layer graph — without building their own app first. They clone the repository, run
+`docker compose up` in the `samples/` directory, execute a smoke script, and within
+minutes have a populated graph with Service, Span, Function, and Class nodes visible in
+Neo4j Browser. The sample apps serve as regression fixtures for future development and
+as reference implementations for plugin consumers.
+
+**Why this priority**: All plugin infrastructure (US1-US4) is complete, but there are no
+runnable demonstrations of the full pipeline. Sample apps validate the end-to-end flow,
+expose integration gaps (such as the FQN correlation gap documented below), and provide
+regression fixtures for future changes.
+
+**Independent Test**: Run `docker compose up -d` in `samples/`, then execute
+`bash smoke-all.sh`. All smoke assertions pass (with the documented `correlates_to`
+warning). Neo4j Browser at http://localhost:7474 shows Service, Span, Function, and Class
+nodes. `cgc otel list-services` returns `sample-php`, `sample-python`,
+`sample-ts-gateway`.
+
+**Acceptance Scenarios**:
+
+1. **Given** the sample apps are built and started via `docker compose up -d`, **When**
+   a developer runs the smoke script, **Then** all assertions pass within 120 seconds
+   (excluding the known `correlates_to` gap which produces a WARN, not FAIL).
+2. **Given** the PHP/Laravel sample app is running with OTEL + Xdebug instrumentation,
+   **When** HTTP requests hit `/api/orders`, **Then** both OTEL spans (with
+   `code.namespace` and `code.function` attributes) and Xdebug stack frames appear in
+   the graph.
+3. **Given** the Python/FastAPI sample app is running with OTEL instrumentation, **When**
+   HTTP requests hit `/api/orders`, **Then** OTEL spans appear in the graph with Python-
+   format FQN attributes (dotted module paths).
+4. **Given** the TypeScript/Express gateway is running with OTEL instrumentation, **When**
+   the gateway proxies requests to backend services, **Then** CLIENT spans with
+   `peer.service` attributes appear in the graph, producing `CALLS_SERVICE` edges.
+5. **Given** all three sample apps are indexed by CGC, **When** the graph is queried for
+   static code nodes, **Then** Function and Class nodes exist with `path` properties
+   containing `samples/`.
+6. **Given** the known FQN correlation gap exists, **When** `MATCH (sp:Span)-
+   [:CORRELATES_TO]->(m) RETURN count(sp)` is executed, **Then** the result is 0 and the
+   smoke script reports WARN (not FAIL), with a reference to `KNOWN-LIMITATIONS.md`.
+
+---
+
 ### Edge Cases
 
 - What happens when a plugin depends on a specific graph schema version and the core has
@@ -167,6 +212,10 @@ name change.
 - What happens when Xdebug sends stack frames for a file path that CGC has not indexed?
 - How are sensitive values (database credentials, API keys) managed in container images
   so they are never baked into the image layer?
+- What happens when OTEL spans carry `code.namespace` and `code.function` attributes but
+  CGC's static graph stores `Function` nodes (not `Method` nodes) without an `fqn`
+  property? (Known gap — `CORRELATES_TO` and `RESOLVES_TO` edges will not form until
+  FQN computation is added to the graph builder.)
 
 ## Requirements *(mandatory)*
 
@@ -250,6 +299,24 @@ name change.
 - **FR-033**: Published images MUST be compatible with Kubernetes pod specifications
   (no host-mode networking requirements, configurable via environment variables only).
 
+**Sample Applications**
+
+- **FR-034**: The repository MUST include at least three sample applications (PHP/Laravel,
+  Python/FastAPI, TypeScript/Express) that exercise the OTEL plugin's span ingestion
+  pipeline end-to-end.
+- **FR-035**: Each sample application MUST include a Dockerfile, dependency manifest,
+  OTEL auto-instrumentation configuration, and a README documenting its purpose and
+  FQN format.
+- **FR-036**: A shared `docker-compose.yml` in `samples/` MUST orchestrate all sample
+  apps alongside the plugin stack (Neo4j, OTEL Collector, CGC services) using a single
+  `docker compose up` command.
+- **FR-037**: An automated smoke script (`samples/smoke-all.sh`) MUST validate the
+  end-to-end pipeline by asserting the presence of Service, Span, Function, and Class
+  nodes in the graph after indexing and traffic generation.
+- **FR-038**: Sample apps MUST document known limitations (specifically the FQN
+  correlation gap) in `samples/KNOWN-LIMITATIONS.md` so that developers understand why
+  `CORRELATES_TO` edges are absent and what future work will resolve it.
+
 ### Key Entities
 
 - **Plugin**: A self-contained, independently installable package that contributes CLI
@@ -297,6 +364,10 @@ name change.
   identical chains.
 - **SC-010**: All plugin service images run successfully in a Kubernetes environment
   using only standard Kubernetes primitives (Deployments, Services, ConfigMaps, Secrets).
+- **SC-011**: Running `bash samples/smoke-all.sh` after `docker compose up -d` in
+  `samples/` passes all smoke assertions (service_count >= 3, span and static node
+  presence, cross-service edges, trace links) within 120 seconds, with the `correlates_to`
+  assertion producing WARN (not FAIL) due to the documented FQN gap.
 
 ## Assumptions
 

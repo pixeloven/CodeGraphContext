@@ -176,31 +176,31 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`, `sample-t
 
 ### Phase 7a: PHP/Laravel Sample App (T053-T056) — parallel with 7b, 7c
 
-- [ ] T053 [P] [US5] Create `samples/php-laravel/` directory structure: `app/Http/Controllers/`, `app/Services/`, `app/Repositories/`, `routes/`, `database/` — standard Laravel layout
-- [ ] T054 [P] [US5] Implement PHP controllers, services, repositories: `OrderController` (GET/POST `/api/orders`), `OrderService`, `OrderRepository` (SQLite), `HealthController` (`/health`) — cross-class call hierarchy producing meaningful call graph
-- [ ] T055 [P] [US5] Create `samples/php-laravel/Dockerfile` — PHP 8.3 + Composer, OTEL auto-instrumentation (`open-telemetry/opentelemetry-auto-laravel`), Xdebug extension configured for remote debugging, env: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`, `OTEL_SERVICE_NAME=sample-php`
-- [ ] T056 [P] [US5] Create `samples/php-laravel/composer.json` + `samples/php-laravel/README.md` — dependencies, FQN format documentation (`Namespace\Class::method`), route table
+- [X] T053 [P] [US5] Create `samples/php-laravel/` directory structure: `app/Http/Controllers/`, `app/Services/`, `app/Repositories/`, `routes/`, `database/` — standard Laravel layout
+- [X] T054 [P] [US5] Implement PHP controllers, services, repositories: `OrderController` (GET/POST `/api/orders`), `OrderService`, `OrderRepository` (SQLite), `HealthController` (`/health`) — cross-class call hierarchy producing meaningful call graph
+- [X] T055 [P] [US5] Create `samples/php-laravel/Dockerfile` — PHP 8.3 + Composer, OTEL auto-instrumentation (`open-telemetry/opentelemetry-auto-laravel`), Xdebug extension configured for remote debugging, env: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`, `OTEL_SERVICE_NAME=sample-php`
+- [X] T056 [P] [US5] Create `samples/php-laravel/composer.json` + `samples/php-laravel/README.md` — dependencies, FQN format documentation (`Namespace\Class::method`), route table
 
 ### Phase 7b: Python/FastAPI Sample App (T057-T060) — parallel with 7a, 7c
 
-- [ ] T057 [P] [US5] Create `samples/python-fastapi/` directory structure: `app/`, `app/services/`, `app/repositories/` — Python package layout
-- [ ] T058 [P] [US5] Implement FastAPI app: `OrderRouter` (GET/POST `/api/orders`), `OrderService`, `OrderRepository` (SQLite via aiosqlite), `HealthRouter` (`/health`) — service/repository pattern with cross-module calls
-- [ ] T059 [P] [US5] Create `samples/python-fastapi/Dockerfile` — Python 3.12-slim, `opentelemetry-instrument` wrapping `uvicorn`, env: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`, `OTEL_SERVICE_NAME=sample-python`
-- [ ] T060 [P] [US5] Create `samples/python-fastapi/requirements.txt` + `samples/python-fastapi/README.md` — dependencies, Python FQN format documentation (`module.Class.method` vs PHP `Namespace\Class::method`)
+- [X] T057 [P] [US5] Create `samples/python-fastapi/` directory structure: `app/`, `app/services/`, `app/repositories/` — Python package layout
+- [X] T058 [P] [US5] Implement FastAPI app: `OrderRouter` (GET/POST `/api/orders`), `OrderService`, `OrderRepository` (SQLite via aiosqlite), `HealthRouter` (`/health`) — service/repository pattern with cross-module calls
+- [X] T059 [P] [US5] Create `samples/python-fastapi/Dockerfile` — Python 3.12-slim, `opentelemetry-instrument` wrapping `uvicorn`, env: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`, `OTEL_SERVICE_NAME=sample-python`
+- [X] T060 [P] [US5] Create `samples/python-fastapi/requirements.txt` + `samples/python-fastapi/README.md` — dependencies, Python FQN format documentation (`module.Class.method` vs PHP `Namespace\Class::method`)
 
 ### Phase 7c: TypeScript/Express Gateway (T061-T063) — parallel with 7a, 7b
 
-- [ ] T061 [P] [US5] Create `samples/ts-express-gateway/` directory structure: `src/`, `src/routes/`, `src/services/` — TypeScript project layout
-- [ ] T062 [P] [US5] Implement Express gateway: `/api/dashboard` (aggregates from PHP + Python backends via HTTP), `/api/orders` (proxies to PHP backend), `/health` — W3C trace context propagation via `@opentelemetry/api`, CLIENT spans with `peer.service` attribute
-- [ ] T063 [P] [US5] Create `samples/ts-express-gateway/Dockerfile` (multi-stage: build TS → run Node), `package.json`, `tsconfig.json`, `samples/ts-express-gateway/README.md` — documents cross-service span generation and `CALLS_SERVICE` edge formation
+- [X] T061 [P] [US5] Create `samples/ts-express-gateway/` directory structure: `src/`, `src/routes/`, `src/services/` — TypeScript project layout
+- [X] T062 [P] [US5] Implement Express gateway: `/api/dashboard` (aggregates from PHP + Python backends via HTTP), `/api/orders` (proxies to PHP backend), `/health` — W3C trace context propagation via `@opentelemetry/api`, CLIENT spans with `peer.service` attribute
+- [X] T063 [P] [US5] Create `samples/ts-express-gateway/Dockerfile` (multi-stage: build TS → run Node), `package.json`, `tsconfig.json`, `samples/ts-express-gateway/README.md` — documents cross-service span generation and `CALLS_SERVICE` edge formation
 
 ### Phase 7d: Shared Infrastructure (T064-T068) — after 7a-7c
 
-- [ ] T064 [US5] Create `samples/KNOWN-LIMITATIONS.md` — documents FQN correlation gap: OTEL writer matches `(m:Method {fqn: sp.fqn})` but CGC creates `Function` nodes without `fqn` property; explains that `CORRELATES_TO` and `RESOLVES_TO` edges will not form; references graph_builder.py:379; states this is a known limitation, not a bug; references future FQN story
-- [ ] T065 [US5] Create `samples/docker-compose.yml` — uses `include` to extend `docker-compose.plugin-stack.yml` from project root; adds 3 app services (`sample-php`, `sample-python`, `sample-ts-gateway`); depends_on otel-collector healthcheck; shared network
-- [ ] T066 [US5] Create `samples/smoke-all.sh` — 6-phase automated validation: (1) wait for services healthy, (2) index sample code via `cgc index`, (3) generate traffic (curl to all routes), (4) wait for span ingestion (poll with timeout), (5) assert via Cypher queries (service_count>=3, span_orders>0, static_functions>0, static_classes>0, cross_service>0, trace_links>0, correlates_to==0 as WARN), (6) summary with pass/warn/fail counts
-- [ ] T067 [US5] Create `samples/README.md` — full walkthrough: prerequisites, architecture diagram (ASCII), `docker compose up` instructions, smoke script usage, Neo4j Browser exploration guide, per-app route tables, link to KNOWN-LIMITATIONS.md
-- [ ] T068 [US5] Write `tests/e2e/plugin/test_sample_apps.py` — E2E test wrapping smoke-all.sh: `subprocess.run(["bash", "samples/smoke-all.sh"])`, asserts exit code 0, parses output for FAIL lines; skipped if Docker not available (`pytest.mark.skipif`)
+- [X] T064 [US5] Create `samples/KNOWN-LIMITATIONS.md` — documents FQN correlation gap: OTEL writer matches `(m:Method {fqn: sp.fqn})` but CGC creates `Function` nodes without `fqn` property; explains that `CORRELATES_TO` and `RESOLVES_TO` edges will not form; references graph_builder.py:379; states this is a known limitation, not a bug; references future FQN story
+- [X] T065 [US5] Create `samples/docker-compose.yml` — uses `include` to extend `docker-compose.plugin-stack.yml` from project root; adds 3 app services (`sample-php`, `sample-python`, `sample-ts-gateway`); depends_on otel-collector healthcheck; shared network
+- [X] T066 [US5] Create `samples/smoke-all.sh` — 6-phase automated validation: (1) wait for services healthy, (2) index sample code via `cgc index`, (3) generate traffic (curl to all routes), (4) wait for span ingestion (poll with timeout), (5) assert via Cypher queries (service_count>=3, span_orders>0, static_functions>0, static_classes>0, cross_service>0, trace_links>0, correlates_to==0 as WARN), (6) summary with pass/warn/fail counts
+- [X] T067 [US5] Create `samples/README.md` — full walkthrough: prerequisites, architecture diagram (ASCII), `docker compose up` instructions, smoke script usage, Neo4j Browser exploration guide, per-app route tables, link to KNOWN-LIMITATIONS.md
+- [X] T068 [US5] Write `tests/e2e/plugin/test_sample_apps.py` — E2E test wrapping smoke-all.sh: `subprocess.run(["bash", "samples/smoke-all.sh"])`, asserts exit code 0, parses output for FAIL lines; skipped if Docker not available (`pytest.mark.skipif`)
 
 **Checkpoint**: `cd samples/ && docker compose up -d` starts all services; `bash smoke-all.sh` passes all assertions (correlates_to warns); Neo4j Browser shows populated graph.
 
@@ -208,38 +208,40 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`, `sample-t
 
 ## Phase 8: User Story 6 — Hosted MCP Server Container Image (Priority: P6)
 
-**Goal**: The CGC MCP server supports HTTP transport natively (no supergateway/Node.js),
-with API key auth, CORS, and health checks. A dedicated Docker image runs it as a
-long-running service deployable to Docker, Docker Swarm, and Kubernetes.
+**Goal**: The CGC MCP server supports plain JSON-RPC HTTP transport natively (no
+supergateway/Node.js), with CORS and health checks. No application-level auth —
+authentication deferred to reverse proxy or network controls. A dedicated Docker
+image runs it as a long-running service deployable to Docker, Docker Swarm, and
+Kubernetes. Single-process async via uvicorn default asyncio event loop.
 
 **Independent Test**: `docker compose up -d cgc-mcp neo4j` → wait for healthy →
-`curl -X POST http://localhost:8045/mcp -H "Authorization: Bearer test-key" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`
+`curl -X POST http://localhost:8045/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`
 returns JSON with all core + plugin tools.
 
 ### Phase 8a: HTTP Transport (T069-T073) — sequential
 
 > **NOTE: Write tests (T069) FIRST, ensure they FAIL before T070-T072**
 
-- [ ] T069 [US6] Write `tests/unit/test_http_transport.py` — unit tests (no network): HTTP handler parses MCP JSON-RPC from request body and returns JSON-RPC response; API key middleware rejects missing/invalid keys with 401; API key middleware passes valid keys; `/healthz` returns 200 with JSON body; CORS preflight returns correct headers; unknown routes return 404. **Run and confirm FAILING before T070.**
-- [ ] T070 [US6] Add `--transport` option to `cgc mcp start` in `src/codegraphcontext/cli/main.py` — accepts `stdio` (default, existing behavior) or `http`; when `http`, reads `CGC_MCP_PORT` (default 8045) and `CGC_API_KEY` (required) from env; launches HTTP server instead of stdio loop
-- [ ] T071 [US6] Implement `src/codegraphcontext/http_transport.py` — `HTTPTransport` class using uvicorn + starlette (already a dependency): `POST /mcp` route that deserializes JSON-RPC, calls `MCPServer.handle_request()`, returns JSON-RPC response; `GET /healthz` route that checks database connectivity and returns `{"status":"ok","tools":N}`; API key middleware checking `Authorization: Bearer <key>` against `CGC_API_KEY` env var; CORS middleware with configurable origin via `CGC_CORS_ORIGIN` (default `*`)
-- [ ] T072 [US6] Refactor `src/codegraphcontext/server.py` — extract request routing from the stdin loop into a `handle_request(method, params, request_id)` method that both the stdio loop and HTTP transport can call; existing stdio behavior unchanged
-- [ ] T073 [US6] Write `tests/integration/test_http_transport_integration.py` — start HTTP transport on a random port, send MCP requests via `httpx`, verify: `initialize` returns capabilities, `tools/list` includes core + plugin tools, `tools/call` with `stub_hello` returns greeting, invalid API key returns 401, `/healthz` returns 200
+- [X] T069 [US6] Write `tests/unit/test_http_transport.py` — unit tests (no network): HTTP handler parses MCP JSON-RPC from request body and returns JSON-RPC response; `/healthz` returns 200 with `{"status":"ok","tools":N}` when DB connected; `/healthz` returns 503 with `{"status":"unhealthy"}` when DB unreachable; CORS preflight returns correct headers; unknown routes return 404. **Run and confirm FAILING before T070.**
+- [X] T070 [US6] Add `--transport` option to `cgc mcp start` in `src/codegraphcontext/cli/main.py` — accepts `stdio` (default, existing behavior) or `http`; when `http`, reads `CGC_MCP_PORT` (default 8045) from env; launches HTTP server instead of stdio loop
+- [X] T071 [US6] Implement `src/codegraphcontext/http_transport.py` — `HTTPTransport` class using uvicorn + starlette (already a dependency): `POST /mcp` route that deserializes JSON-RPC, calls `MCPServer.handle_request()`, returns JSON-RPC response; `GET /healthz` route that returns `{"status":"ok","tools":N}` (HTTP 200) when DB connected or `{"status":"unhealthy"}` (HTTP 503) when DB unreachable; CORS middleware with configurable origin via `CGC_CORS_ORIGIN` (default `*`); single-process async (uvicorn default asyncio event loop, no workers)
+- [X] T072 [US6] Refactor `src/codegraphcontext/server.py` — extract request routing from the stdin loop into a `handle_request(method, params, request_id)` method that both the stdio loop and HTTP transport can call; existing stdio behavior unchanged
+- [X] T073 [US6] Write `tests/integration/test_http_transport_integration.py` — start HTTP transport on a random port, send MCP requests via `httpx`, verify: `initialize` returns capabilities, `tools/list` includes core + plugin tools, `tools/call` with `stub_hello` returns greeting, `/healthz` returns 200 when DB connected, `/healthz` returns 503 when DB unreachable
 
 ### Phase 8b: Container Image (T074-T077) — after 8a
 
-- [ ] T074 [P] [US6] Create `Dockerfile.mcp` — multi-stage build from existing `Dockerfile`, installs core + all plugins (`cgc-plugin-otel`, `cgc-plugin-xdebug`), `EXPOSE 8045`, `HEALTHCHECK` via `/healthz`, `CMD ["cgc", "mcp", "start", "--transport", "http"]`; non-root user, no embedded credentials
-- [ ] T075 [P] [US6] Add `cgc-mcp` service to `docker-compose.plugin-stack.yml` — build from `Dockerfile.mcp`, env: `DATABASE_TYPE`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `CGC_API_KEY`, `CGC_CORS_ORIGIN`, `CGC_MCP_PORT`; ports `8045:8045`; depends_on neo4j healthy; replaces existing `cgc-core` service (which restarts in a loop)
-- [ ] T076 [P] [US6] Create `k8s/cgc-mcp/deployment.yaml` — Deployment with readinessProbe on `/healthz`, env from ConfigMap + Secret, image ref from registry; `k8s/cgc-mcp/service.yaml` — ClusterIP exposing port 8045
-- [ ] T077 [US6] Add `cgc-mcp` to `.github/services.json` for CI/CD matrix build — path `./`, dockerfile `Dockerfile.mcp`, health_check `http_get`
+- [X] T074 [P] [US6] Create `Dockerfile.mcp` — multi-stage build from existing `Dockerfile`, installs core + all plugins (`cgc-plugin-otel`, `cgc-plugin-xdebug`), `EXPOSE 8045`, `HEALTHCHECK` via `/healthz`, `CMD ["cgc", "mcp", "start", "--transport", "http"]`; non-root user, no embedded credentials
+- [X] T075 [P] [US6] Add `cgc-mcp` service to `docker-compose.plugin-stack.yml` — build from `Dockerfile.mcp`, env: `DATABASE_TYPE`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `CGC_CORS_ORIGIN`, `CGC_MCP_PORT`; ports `8045:8045`; depends_on neo4j healthy; replaces existing `cgc-core` service (which restarts in a loop)
+- [X] T076 [P] [US6] Create `k8s/cgc-mcp/deployment.yaml` — Deployment with readinessProbe on `/healthz`, env from ConfigMap + Secret, image ref from registry; `k8s/cgc-mcp/service.yaml` — ClusterIP exposing port 8045
+- [X] T077 [US6] Add `cgc-mcp` to `.github/services.json` for CI/CD matrix build — path `./`, dockerfile `Dockerfile.mcp`, health_check `http_get`
 
 ### Phase 8c: Documentation and Testing (T078-T080) — after 8b
 
-- [ ] T078 [US6] Create `docs/deployment/MCP_SERVER_HOSTING.md` — deployment guide covering: Docker standalone, Docker Compose with Neo4j, Docker Swarm, Kubernetes; env var reference; API key setup; client configuration (Claude Desktop, VS Code, Cursor, Claude Code) for remote HTTP MCP endpoint; TLS/reverse proxy recommendations
-- [ ] T079 [US6] Write `tests/e2e/test_mcp_container.py` — E2E test: build `Dockerfile.mcp`, start container with docker-compose, send MCP requests via curl/httpx, assert `tools/list` returns core + plugin tools, assert `tools/call` executes, assert 401 without key, assert `/healthz` 200; skipped if Docker not available
-- [ ] T080 [US6] Update `samples/docker-compose.yml` to include `cgc-mcp` service as an alternative to `cgc-core`, with documentation in `samples/README.md` showing how to connect AI clients to the hosted endpoint
+- [X] T078 [US6] Create `docs/deployment/MCP_SERVER_HOSTING.md` — deployment guide covering: Docker standalone, Docker Compose with Neo4j, Docker Swarm, Kubernetes; env var reference; client configuration (Claude Desktop, VS Code, Cursor, Claude Code) for remote HTTP MCP endpoint; reverse proxy auth and TLS recommendations
+- [X] T079 [US6] Write `tests/e2e/test_mcp_container.py` — E2E test: build `Dockerfile.mcp`, start container with docker-compose, send MCP requests via curl/httpx, assert `tools/list` returns core + plugin tools, assert `tools/call` executes, assert `/healthz` 200; skipped if Docker not available
+- [X] T080 [US6] Update `samples/docker-compose.yml` to include `cgc-mcp` service as an alternative to `cgc-core`, with documentation in `samples/README.md` showing how to connect AI clients to the hosted endpoint
 
-**Checkpoint**: `docker compose up -d cgc-mcp neo4j` → `/healthz` returns 200 → `curl -H "Authorization: Bearer $KEY" -d '...' /mcp` returns tool listing → same image deploys to K8s pod.
+**Checkpoint**: `docker compose up -d cgc-mcp neo4j` → `/healthz` returns 200 → `curl -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' http://localhost:8045/mcp` returns tool listing → same image deploys to K8s pod.
 
 ---
 
@@ -333,6 +335,15 @@ Sequential: T042 → T043 (services.json must exist before workflow reads it)
 Parallel: T044, T045, T046 (test workflow + K8s manifests)
 ```
 
+### US6 (Hosted MCP Server)
+```
+Sequential: T069 (write tests, confirm FAIL) → T070 → T071 → T072 → T073
+Parallel: T074, T075, T076 (Dockerfile, docker-compose, K8s manifests)
+Then: T077 (services.json update)
+Parallel: T078, T079 (docs + E2E test)
+Then: T080 (samples integration)
+```
+
 ---
 
 ## Implementation Strategy
@@ -353,7 +364,7 @@ Parallel: T044, T045, T046 (test workflow + K8s manifests)
 4. US3 → Dev traces → **demo: "show concrete implementations that ran"**
 5. US4 → CI/CD → **demo: `git tag v0.1.0` builds all images automatically**
 6. US5 → Sample apps → **demo: `docker compose up && bash smoke-all.sh` — full pipeline validated**
-7. US6 → Hosted MCP → **demo: `curl -H "Authorization: Bearer $KEY" http://cgc-mcp:8045/mcp` — remote AI clients connect**
+7. US6 → Hosted MCP → **demo: `curl -d '...' http://cgc-mcp:8045/mcp` — remote AI clients connect**
 
 ### Parallel Team Strategy
 

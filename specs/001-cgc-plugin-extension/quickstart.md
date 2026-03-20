@@ -39,6 +39,7 @@ docker compose -f docker-compose.plugin-stack.yml -f docker-compose.dev.yml up -
 |---|---|---|
 | Neo4j | bolt://localhost:7687 | Shared graph database |
 | CGC core | MCP at localhost:8080 | Static code indexing |
+| CGC MCP (HTTP) | http://localhost:8045 | Hosted MCP server (JSON-RPC) |
 | OTEL plugin | gRPC at localhost:5317 | Runtime span ingestion |
 | Xdebug listener (dev) | TCP at localhost:9003 | Dev-time stack traces |
 
@@ -158,7 +159,45 @@ LIMIT 20
 
 ---
 
-## 8. Build and Push Container Images
+## 8. Run the Hosted MCP Server (HTTP Transport)
+
+Deploy the MCP server as a network service accessible to multiple AI clients:
+
+```bash
+# Start the MCP server with HTTP transport via Docker Compose
+docker compose -f docker-compose.plugin-stack.yml up -d cgc-mcp neo4j
+
+# Verify the server is healthy
+curl http://localhost:8045/healthz
+# Expected: {"status":"ok","tools":N}
+
+# Send an MCP request (initialize)
+curl -X POST http://localhost:8045/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+
+# List available tools
+curl -X POST http://localhost:8045/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+```
+
+**Or run locally without Docker**:
+```bash
+# Start MCP server in HTTP mode (default port 8045)
+cgc mcp start --transport http
+
+# Configure AI clients to connect to http://localhost:8045/mcp
+```
+
+**Notes**:
+- No application-level authentication — use a reverse proxy or network controls for access management
+- CORS is configurable via `CGC_CORS_ORIGIN` env var (default: `*`)
+- `/healthz` returns 503 when Neo4j is unreachable
+
+---
+
+## 9. Build and Push Container Images
 
 ```bash
 # Trigger a release build (creates all plugin images)
@@ -173,7 +212,7 @@ git push origin v0.1.0
 
 ---
 
-## 9. Write Your Own Plugin
+## 10. Write Your Own Plugin
 
 ```bash
 # Use the plugin scaffold (coming in a future task)

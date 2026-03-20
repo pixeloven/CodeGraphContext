@@ -10,8 +10,9 @@ installable packages to contribute CLI commands (Typer) and MCP tools without mo
 CGC core. Two first-party plugins ship with the extension: an OTEL span processor (runtime
 intelligence) and an Xdebug DBGp listener (dev-time stack traces). A shared GitHub Actions
 matrix CI/CD pipeline builds and publishes versioned Docker images for each plugin service.
-All plugin data flows into the existing Neo4j/FalkorDB graph, enabling cross-layer queries
-across static code and runtime execution.
+A hosted MCP server container image exposes a plain JSON-RPC HTTP endpoint for remote AI
+clients without requiring stdio transport. All plugin data flows into the existing
+Neo4j/FalkorDB graph, enabling cross-layer queries across static code and runtime execution.
 
 ## Technical Context
 
@@ -20,6 +21,7 @@ across static code and runtime execution.
 - Plugin system: `importlib.metadata` (stdlib), `packaging>=23.0` (version constraint checking)
 - OTEL plugin: `grpcio>=1.57.0`, `opentelemetry-proto>=0.43b0`, `opentelemetry-sdk>=1.20.0`
 - Xdebug plugin: stdlib only (`socket`, `xml.etree.ElementTree`, `hashlib`)
+- HTTP transport: `uvicorn>=0.27.0`, `starlette>=0.36.0` (already dependencies of core)
 - All plugins: `typer[all]>=0.9.0`, `neo4j>=5.15.0` (shared with core)
 
 **Storage**: Neo4j (production) / FalkorDB (default) — same shared instance as CGC core;
@@ -37,12 +39,17 @@ networking, env-var-only config)
 - CGC startup with all plugins: ≤ 15 seconds
 - Span data queryable within 10 seconds of request completion under normal load
 - Plugin load failure: ≤ 5-second timeout per plugin (SIGALRM)
+- MCP HTTP server: `/healthz` passes within 5 seconds of readiness
 
 **Constraints**:
 - Plugin failures MUST NOT crash CGC core (strict isolation)
 - No credentials baked into container images
 - `./tests/run_tests.sh fast` MUST pass after each phase
 - Xdebug plugin MUST default to disabled (security: TCP listener)
+- HTTP transport: plain JSON-RPC request/response (no SSE/streaming)
+- HTTP transport: single-process async (uvicorn default asyncio event loop)
+- HTTP transport: no application-level auth — defer to reverse proxy/network controls
+- `/healthz` returns 503 with `{"status":"unhealthy"}` when Neo4j unreachable
 
 **Scale/Scope**: 2 plugin packages, 1 shared CI/CD pipeline, 5 container services
 (including hosted MCP server), 3 sample applications (PHP/Laravel, Python/FastAPI,
@@ -55,7 +62,7 @@ TypeScript/Express)
 | Principle | Status | Evidence |
 |---|---|---|
 | **I. Graph-First Architecture** | ✅ PASS | All plugin output (spans, stack frames) writes to the graph as typed nodes + relationships per `data-model.md`. No flat data structures. Graph schema is the output target for both plugins. |
-| **II. Dual Interface — CLI + MCP** | ✅ PASS | Each plugin MUST contribute both CLI commands AND MCP tools (per plugin interface contract). The plugin contract enforces parity by design. |
+| **II. Dual Interface — CLI + MCP** | ✅ PASS | Each plugin MUST contribute both CLI commands AND MCP tools (per plugin interface contract). The plugin contract enforces parity by design. US6 adds HTTP transport for MCP, extending accessibility without changing the interface. |
 | **III. Testing Pyramid** | ✅ PASS | Plugin packages include `tests/unit/` and `tests/integration/`. `./tests/run_tests.sh fast` is extended to cover plugin directories. E2E tests cover the full plugin lifecycle. Tests written and observed to FAIL before implementation (Red-Green-Refactor). |
 | **IV. Multi-Language Parser Parity** | ✅ PASS | No new language parsers introduced. Runtime nodes carry `source` property (`"runtime_otel"`, `"runtime_xdebug"`) that distinguish origin layers without breaking existing cross-language queries. |
 | **V. Simplicity** | ⚠️ JUSTIFIED | Plugin registry is an abstraction. Justified because: (a) the feature requires extensibility without forking core — a non-negotiable requirement; (b) `importlib.metadata` entry-points is Python stdlib — minimal abstraction; (c) without a registry, adding each plugin would require modifying `server.py` and `cli/main.py` permanently, producing a worse monolith. See Complexity Tracking below. |
@@ -84,7 +91,7 @@ specs/001-cgc-plugin-extension/
 # Core CGC modifications (existing package)
 src/codegraphcontext/
 ├── plugin_registry.py          # NEW: PluginRegistry class, isolation wrappers
-├── http_transport.py           # NEW: Streamable HTTP transport (uvicorn + starlette)
+├── http_transport.py           # NEW: Plain JSON-RPC HTTP transport (uvicorn + starlette)
 ├── cli/
 │   └── main.py                 # MODIFIED: --transport option, plugin loading at startup
 └── server.py                   # MODIFIED: extract handle_request(), plugin tool loading
@@ -115,17 +122,20 @@ plugins/
 # Tests (additions to existing structure)
 tests/
 ├── unit/
-│   └── plugin/
-│       ├── test_plugin_registry.py    # PluginRegistry unit tests (mocked)
-│       ├── test_otel_processor.py     # Span extraction logic
-│       └── test_xdebug_parser.py      # DBGp XML parsing + deduplication
+│   ├── plugin/
+│   │   ├── test_plugin_registry.py    # PluginRegistry unit tests (mocked)
+│   │   ├── test_otel_processor.py     # Span extraction logic
+│   │   └── test_xdebug_parser.py      # DBGp XML parsing + deduplication
+│   └── test_http_transport.py         # HTTP transport unit tests (US6)
 ├── integration/
-│   └── plugin/
-│       ├── test_plugin_load.py        # Plugin discovery + load integration
-│       └── test_otel_integration.py   # OTLP receive → graph write
+│   ├── plugin/
+│   │   ├── test_plugin_load.py        # Plugin discovery + load integration
+│   │   └── test_otel_integration.py   # OTLP receive → graph write
+│   └── test_http_transport_integration.py  # HTTP transport integration (US6)
 └── e2e/
-    └── plugin/
-        └── test_plugin_lifecycle.py   # Full install/use/uninstall user journey
+    ├── plugin/
+    │   └── test_plugin_lifecycle.py   # Full install/use/uninstall user journey
+    └── test_mcp_container.py          # MCP container E2E test (US6)
 
 # CI/CD
 .github/

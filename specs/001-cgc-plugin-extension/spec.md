@@ -206,8 +206,9 @@ long-running network service accessible to multiple AI assistants and IDE client
 over HTTP — without requiring each client to spawn a local CGC process via stdio.
 They pull the official container image, configure Neo4j credentials and an API key
 via environment variables, and run it in Docker, Docker Swarm, or Kubernetes. The
-server exposes a streamable HTTP endpoint that any MCP-compatible client can connect
-to, with authentication and CORS handled at the application layer.
+server exposes a plain JSON-RPC request/response HTTP endpoint (no SSE or streaming)
+that any MCP-compatible client can connect to, with CORS handled at the application
+layer. Authentication is deferred to network-level controls or a reverse proxy.
 
 **Why this priority**: The existing MCP server only supports stdio transport, meaning
 every client must run CGC as a child process. This limits deployment to local
@@ -217,34 +218,29 @@ enables all of these use cases and is the natural next step after the plugin sys
 and sample apps are validated.
 
 **Independent Test**: Pull the published `cgc-mcp` image, run it with Neo4j
-credentials and an API key. Send an MCP `initialize` request via HTTP to the
-published endpoint. Verify the server responds with capabilities including all
-core and plugin tools. Send a `tools/call` request without an API key and verify
-it is rejected with 401. Deploy the same image to a Kubernetes pod and verify it
-passes readiness probes and serves MCP requests.
+credentials. Send an MCP `initialize` request via HTTP to the published endpoint.
+Verify the server responds with capabilities including all core and plugin tools.
+Deploy the same image to a Kubernetes pod and verify it passes readiness probes
+and serves MCP requests.
 
 **Acceptance Scenarios**:
 
 1. **Given** the `cgc-mcp` image is started with `DATABASE_TYPE`, `NEO4J_URI`,
-   `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `CGC_API_KEY` environment variables,
-   **When** a client sends an HTTP POST to `/mcp` with a valid `Authorization:
-   Bearer <key>` header, **Then** the server processes the MCP JSON-RPC request
-   and returns a valid response.
-2. **Given** the server is running, **When** a client sends a request without an
-   `Authorization` header or with an invalid key, **Then** the server responds
-   with HTTP 401 Unauthorized.
-3. **Given** the server is running, **When** a client sends an `initialize`
+   `NEO4J_USERNAME`, and `NEO4J_PASSWORD` environment variables, **When** a client
+   sends an HTTP POST to `/mcp`, **Then** the server processes the MCP JSON-RPC
+   request and returns a valid response.
+2. **Given** the server is running, **When** a client sends an `initialize`
    request, **Then** the response includes all core tools AND all plugin-contributed
    tools (OTEL, Xdebug) in the capabilities.
-4. **Given** the server is running with plugins installed, **When** a client calls
+3. **Given** the server is running with plugins installed, **When** a client calls
    `otel_list_services` via the HTTP endpoint, **Then** the server returns the
    same results as the stdio transport would.
-5. **Given** the server is deployed in Kubernetes, **When** the readiness probe
+4. **Given** the server is deployed in Kubernetes, **When** the readiness probe
    fires, **Then** the `/healthz` endpoint returns HTTP 200 within 5 seconds.
-6. **Given** the server is running behind a reverse proxy or load balancer,
+5. **Given** the server is running behind a reverse proxy or load balancer,
    **When** a client sends a preflight CORS OPTIONS request, **Then** the server
    responds with appropriate `Access-Control-Allow-*` headers.
-7. **Given** the stdio transport is still needed for local IDE integrations,
+6. **Given** the stdio transport is still needed for local IDE integrations,
    **When** `cgc mcp start` is run without `--transport`, **Then** the server
    defaults to stdio mode (backwards compatible).
 
@@ -268,10 +264,12 @@ passes readiness probes and serves MCP requests.
   property? (Known gap — `CORRELATES_TO` and `RESOLVES_TO` edges will not form until
   FQN computation is added to the graph builder.)
 - What happens when the hosted MCP server receives concurrent requests from
-  multiple AI clients? Does the server handle request isolation correctly, or
-  can one client's long-running tool call block another?
+  multiple AI clients? → Single-process async (uvicorn default asyncio event loop);
+  concurrent requests are handled via coroutines. Tool calls are short-lived I/O-bound
+  Cypher queries and do not block each other.
 - How does the HTTP transport behave when the Neo4j database connection is lost
-  mid-request? Does `/healthz` correctly transition to unhealthy?
+  mid-request? → `/healthz` returns HTTP 503 with `{"status":"unhealthy"}` when
+  the database is unreachable. In-flight tool calls return a JSON-RPC error response.
 
 ## Requirements *(mandatory)*
 
@@ -375,17 +373,18 @@ passes readiness probes and serves MCP requests.
 
 **Hosted MCP Server**
 
-- **FR-039**: The MCP server MUST support a streamable HTTP transport in addition to
-  the existing stdio transport, selectable via a `--transport` CLI option (default:
-  `stdio` for backwards compatibility).
+- **FR-039**: The MCP server MUST support a plain JSON-RPC request/response HTTP
+  transport (no SSE or streaming) in addition to the existing stdio transport,
+  selectable via a `--transport` CLI option (default: `stdio` for backwards
+  compatibility).
 - **FR-040**: The HTTP transport MUST expose a single endpoint (`/mcp`) that accepts
   MCP JSON-RPC requests as HTTP POST bodies and returns JSON-RPC responses.
-- **FR-041**: The HTTP transport MUST support API key authentication via the
-  `Authorization: Bearer <key>` header, configured through the `CGC_API_KEY`
-  environment variable. Requests without a valid key MUST receive HTTP 401.
+- **FR-041**: *(Removed — authentication deferred to network-level controls or
+  reverse proxy.)*
 - **FR-042**: The HTTP transport MUST expose a `/healthz` endpoint that returns
-  HTTP 200 when the server is ready to accept MCP requests and has a valid database
-  connection.
+  HTTP 200 with `{"status":"ok","tools":N}` when the server is ready and has a valid
+  database connection, and HTTP 503 with `{"status":"unhealthy"}` when the database
+  is unreachable.
 - **FR-043**: The HTTP transport MUST handle CORS preflight requests and respond
   with configurable `Access-Control-Allow-Origin` (via `CGC_CORS_ORIGIN` env var,
   default: `*`).
@@ -395,8 +394,8 @@ passes readiness probes and serves MCP requests.
 - **FR-045**: The MCP container image MUST include all core tools and all installed
   plugin tools (OTEL, Xdebug) in the tool listing returned by `tools/list`.
 - **FR-046**: The MCP container image MUST NOT embed credentials; all secrets
-  (database password, API key) MUST be provided at runtime via environment variables
-  or mounted files.
+  (database password) MUST be provided at runtime via environment variables or
+  mounted files.
 - **FR-047**: The MCP container image MUST be deployable in Docker, Docker Swarm,
   and Kubernetes without host-mode networking or privileged capabilities.
 
@@ -452,8 +451,8 @@ passes readiness probes and serves MCP requests.
   assertion producing WARN (not FAIL) due to the documented FQN gap.
 - **SC-012**: The `cgc-mcp` container image starts in under 15 seconds, passes its
   `/healthz` check within 5 seconds of readiness, and correctly serves MCP `tools/list`
-  and `tools/call` requests over HTTP with API key authentication — validated by a
-  curl-based integration test against the running container.
+  and `tools/call` requests over HTTP — validated by a curl-based integration test
+  against the running container.
 
 ## Assumptions
 
@@ -468,3 +467,12 @@ passes readiness probes and serves MCP requests.
   the project's existing workflows.
 - Container registry target is determined by project maintainers at implementation time
   (Docker Hub, GHCR, or self-hosted).
+
+## Clarifications
+
+### Session 2026-03-20
+
+- Q: Should the HTTP transport implement full MCP Streamable HTTP (with SSE for server-initiated messages) or plain JSON-RPC request/response over POST? → A: Plain JSON-RPC request/response over POST (no SSE). SSE/streaming can be added as future work if needed.
+- Q: What concurrency model should the HTTP transport use for handling multiple AI clients? → A: Single-process async (uvicorn default asyncio event loop). Tool calls are short-lived I/O-bound Cypher queries.
+- Q: Should the HTTP endpoint include API key authentication (`CGC_API_KEY`)? → A: No. Authentication deferred to network-level controls or reverse proxy. Removed FR-041, updated acceptance scenarios and SC-012.
+- Q: How should `/healthz` behave when Neo4j is unreachable? → A: Return HTTP 503 with `{"status":"unhealthy"}`. In-flight tool calls return JSON-RPC error responses.

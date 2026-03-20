@@ -141,6 +141,28 @@ MATCH (f:Function) WHERE f.path CONTAINS 'samples/'
 RETURN f.name, f.path LIMIT 20;
 ```
 
+## Hosted MCP Server (Optional)
+
+The sample stack includes a `cgc-mcp` service that runs the CGC MCP server
+over HTTP on port 8045. It is disabled by default so it does not interfere with
+the plugin pipeline demo. To start it alongside the rest of the stack, use the
+`mcp` Docker Compose profile:
+
+```bash
+# Start the full sample stack plus the hosted MCP server
+docker compose --profile mcp up -d --build
+
+# Or start only the MCP server after the stack is already running
+docker compose --profile mcp up -d cgc-mcp
+```
+
+Once running, point any MCP-capable AI client (Claude Desktop, VS Code, Cursor,
+Claude Code) at `http://localhost:8045/mcp`. The server exposes the same tools
+as the local stdio mode plus the OTEL and Xdebug plugin tools bundled in the
+`cgc-mcp` image. For reverse-proxy auth, TLS configuration, Kubernetes
+manifests, and full client setup instructions see
+[docs/docs/deployment/MCP_SERVER_HOSTING.md](../docs/docs/deployment/MCP_SERVER_HOSTING.md).
+
 ## Known Limitations
 
 See [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md) for documentation of the FQN

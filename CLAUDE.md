@@ -1,8 +1,9 @@
 # CodeGraphContext Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-03-14
+Auto-generated from all feature plans. Last updated: 2026-03-20
 
 ## Active Technologies
+- Neo4j (production) / FalkorDB (default) — same shared instance as CGC core; (001-cgc-plugin-extension)
 
 - Python 3.10+ (constitutional constraint) (001-cgc-plugin-extension)
 
@@ -37,6 +38,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.10+ (constitutional constraint): Follow standard conventions
 
 ## Recent Changes
+- 001-cgc-plugin-extension: Added Python 3.10+ (constitutional constraint)
 
 - 001-cgc-plugin-extension: Added Python 3.10+ (constitutional constraint)
 

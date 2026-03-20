@@ -85,6 +85,38 @@ services:
       - cgc-network
     restart: unless-stopped
 
+  # ── Hosted MCP server (HTTP transport, optional) ──────────────────────────
+  # Serves the Model Context Protocol over HTTP on port 8045.
+  # This is an alternative to the stdio-based local MCP mode used by IDEs.
+  # It is NOT started by default — activate with the "mcp" profile:
+  #
+  #   docker compose --profile mcp up -d cgc-mcp
+  #
+  # Connect AI clients to http://localhost:8045/mcp
+  # See docs/docs/deployment/MCP_SERVER_HOSTING.md for full details.
+  cgc-mcp:
+    build:
+      context: ..
+      dockerfile: ../Dockerfile.mcp
+    container_name: cgc-sample-mcp
+    environment:
+      - DATABASE_TYPE=neo4j
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - CGC_CORS_ORIGIN=${CGC_CORS_ORIGIN:-*}
+      - CGC_MCP_PORT=${CGC_MCP_PORT:-8045}
+    ports:
+      - "${CGC_MCP_PORT:-8045}:8045"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped
+    profiles:
+      - mcp
+
   # ── One-shot indexer (indexes all sample apps then exits) ──────────────────
   # Usage: docker compose run --rm indexer
   indexer:

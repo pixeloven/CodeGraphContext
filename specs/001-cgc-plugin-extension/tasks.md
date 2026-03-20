@@ -206,6 +206,43 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`, `sample-t
 
 ---
 
+## Phase 8: User Story 6 — Hosted MCP Server Container Image (Priority: P6)
+
+**Goal**: The CGC MCP server supports HTTP transport natively (no supergateway/Node.js),
+with API key auth, CORS, and health checks. A dedicated Docker image runs it as a
+long-running service deployable to Docker, Docker Swarm, and Kubernetes.
+
+**Independent Test**: `docker compose up -d cgc-mcp neo4j` → wait for healthy →
+`curl -X POST http://localhost:8045/mcp -H "Authorization: Bearer test-key" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`
+returns JSON with all core + plugin tools.
+
+### Phase 8a: HTTP Transport (T069-T073) — sequential
+
+> **NOTE: Write tests (T069) FIRST, ensure they FAIL before T070-T072**
+
+- [ ] T069 [US6] Write `tests/unit/test_http_transport.py` — unit tests (no network): HTTP handler parses MCP JSON-RPC from request body and returns JSON-RPC response; API key middleware rejects missing/invalid keys with 401; API key middleware passes valid keys; `/healthz` returns 200 with JSON body; CORS preflight returns correct headers; unknown routes return 404. **Run and confirm FAILING before T070.**
+- [ ] T070 [US6] Add `--transport` option to `cgc mcp start` in `src/codegraphcontext/cli/main.py` — accepts `stdio` (default, existing behavior) or `http`; when `http`, reads `CGC_MCP_PORT` (default 8045) and `CGC_API_KEY` (required) from env; launches HTTP server instead of stdio loop
+- [ ] T071 [US6] Implement `src/codegraphcontext/http_transport.py` — `HTTPTransport` class using uvicorn + starlette (already a dependency): `POST /mcp` route that deserializes JSON-RPC, calls `MCPServer.handle_request()`, returns JSON-RPC response; `GET /healthz` route that checks database connectivity and returns `{"status":"ok","tools":N}`; API key middleware checking `Authorization: Bearer <key>` against `CGC_API_KEY` env var; CORS middleware with configurable origin via `CGC_CORS_ORIGIN` (default `*`)
+- [ ] T072 [US6] Refactor `src/codegraphcontext/server.py` — extract request routing from the stdin loop into a `handle_request(method, params, request_id)` method that both the stdio loop and HTTP transport can call; existing stdio behavior unchanged
+- [ ] T073 [US6] Write `tests/integration/test_http_transport_integration.py` — start HTTP transport on a random port, send MCP requests via `httpx`, verify: `initialize` returns capabilities, `tools/list` includes core + plugin tools, `tools/call` with `stub_hello` returns greeting, invalid API key returns 401, `/healthz` returns 200
+
+### Phase 8b: Container Image (T074-T077) — after 8a
+
+- [ ] T074 [P] [US6] Create `Dockerfile.mcp` — multi-stage build from existing `Dockerfile`, installs core + all plugins (`cgc-plugin-otel`, `cgc-plugin-xdebug`), `EXPOSE 8045`, `HEALTHCHECK` via `/healthz`, `CMD ["cgc", "mcp", "start", "--transport", "http"]`; non-root user, no embedded credentials
+- [ ] T075 [P] [US6] Add `cgc-mcp` service to `docker-compose.plugin-stack.yml` — build from `Dockerfile.mcp`, env: `DATABASE_TYPE`, `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `CGC_API_KEY`, `CGC_CORS_ORIGIN`, `CGC_MCP_PORT`; ports `8045:8045`; depends_on neo4j healthy; replaces existing `cgc-core` service (which restarts in a loop)
+- [ ] T076 [P] [US6] Create `k8s/cgc-mcp/deployment.yaml` — Deployment with readinessProbe on `/healthz`, env from ConfigMap + Secret, image ref from registry; `k8s/cgc-mcp/service.yaml` — ClusterIP exposing port 8045
+- [ ] T077 [US6] Add `cgc-mcp` to `.github/services.json` for CI/CD matrix build — path `./`, dockerfile `Dockerfile.mcp`, health_check `http_get`
+
+### Phase 8c: Documentation and Testing (T078-T080) — after 8b
+
+- [ ] T078 [US6] Create `docs/deployment/MCP_SERVER_HOSTING.md` — deployment guide covering: Docker standalone, Docker Compose with Neo4j, Docker Swarm, Kubernetes; env var reference; API key setup; client configuration (Claude Desktop, VS Code, Cursor, Claude Code) for remote HTTP MCP endpoint; TLS/reverse proxy recommendations
+- [ ] T079 [US6] Write `tests/e2e/test_mcp_container.py` — E2E test: build `Dockerfile.mcp`, start container with docker-compose, send MCP requests via curl/httpx, assert `tools/list` returns core + plugin tools, assert `tools/call` executes, assert 401 without key, assert `/healthz` 200; skipped if Docker not available
+- [ ] T080 [US6] Update `samples/docker-compose.yml` to include `cgc-mcp` service as an alternative to `cgc-core`, with documentation in `samples/README.md` showing how to connect AI clients to the hosted endpoint
+
+**Checkpoint**: `docker compose up -d cgc-mcp neo4j` → `/healthz` returns 200 → `curl -H "Authorization: Bearer $KEY" -d '...' /mcp` returns tool listing → same image deploys to K8s pod.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -238,6 +275,10 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`, `sample-t
   - Phase 7a (T053-T056), 7b (T057-T060), 7c (T061-T063) all parallel — three independent apps
   - Phase 7d (T064-T068) sequential after 7a-7c — shared infrastructure depends on all apps
   - T064 (KNOWN-LIMITATIONS) → T065 (docker-compose) → T066 (smoke script) → T067 (README) → T068 (E2E test)
+- **US6 (Phase 8)**: Depends on US1 complete (plugin loading for tool listing); independent of US2-US5
+  - Phase 8a (T069-T073) sequential — tests first, then transport, then server refactor
+  - Phase 8b (T074-T077) after 8a — T074, T075, T076 parallel; T077 after T074
+  - Phase 8c (T078-T080) after 8b — T078 parallel with T079; T080 last
 - **Polish (Final Phase)**: Depends on all user stories complete
   - T049, T050, T051 all parallel
   - T052 (quickstart validation) last — sequentially after T048-T051
@@ -249,6 +290,7 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`, `sample-t
 - **US3 (P3)**: Depends on US1 complete — independent of US2
 - **US4 (P4)**: Depends on US2 + US3 complete (container services need working implementations)
 - **US5 (P5)**: Depends on US2 + US4 complete (needs working OTEL plugin + Docker infrastructure)
+- **US6 (P6)**: Depends on US1 complete (plugin loading); independent of US2-US5 (can be parallelized)
 
 ### Within Each User Story
 
@@ -311,6 +353,7 @@ Parallel: T044, T045, T046 (test workflow + K8s manifests)
 4. US3 → Dev traces → **demo: "show concrete implementations that ran"**
 5. US4 → CI/CD → **demo: `git tag v0.1.0` builds all images automatically**
 6. US5 → Sample apps → **demo: `docker compose up && bash smoke-all.sh` — full pipeline validated**
+7. US6 → Hosted MCP → **demo: `curl -H "Authorization: Bearer $KEY" http://cgc-mcp:8045/mcp` — remote AI clients connect**
 
 ### Parallel Team Strategy
 

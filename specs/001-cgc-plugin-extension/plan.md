@@ -44,8 +44,9 @@ networking, env-var-only config)
 - `./tests/run_tests.sh fast` MUST pass after each phase
 - Xdebug plugin MUST default to disabled (security: TCP listener)
 
-**Scale/Scope**: 2 plugin packages, 1 shared CI/CD pipeline, 4 container services,
-3 sample applications (PHP/Laravel, Python/FastAPI, TypeScript/Express)
+**Scale/Scope**: 2 plugin packages, 1 shared CI/CD pipeline, 5 container services
+(including hosted MCP server), 3 sample applications (PHP/Laravel, Python/FastAPI,
+TypeScript/Express)
 
 ## Constitution Check
 
@@ -83,9 +84,10 @@ specs/001-cgc-plugin-extension/
 # Core CGC modifications (existing package)
 src/codegraphcontext/
 ├── plugin_registry.py          # NEW: PluginRegistry class, isolation wrappers
+├── http_transport.py           # NEW: Streamable HTTP transport (uvicorn + starlette)
 ├── cli/
-│   └── main.py                 # MODIFIED: call load_plugin_cli_commands() at startup
-└── server.py                   # MODIFIED: call _load_plugin_tools() in __init__
+│   └── main.py                 # MODIFIED: --transport option, plugin loading at startup
+└── server.py                   # MODIFIED: extract handle_request(), plugin tool loading
 
 # New plugin packages
 plugins/
@@ -141,7 +143,12 @@ config/
 └── neo4j/
     └── init.cypher                    # MODIFIED: add plugin schema constraints
 
+Dockerfile.mcp                             # NEW: hosted MCP server image
+
 k8s/
+├── cgc-mcp/
+│   ├── deployment.yaml                    # NEW: MCP server deployment
+│   └── service.yaml                       # NEW: MCP server ClusterIP service
 └── cgc-plugin-otel/
     ├── deployment.yaml
     └── service.yaml

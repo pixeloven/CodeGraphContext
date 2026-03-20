@@ -199,6 +199,57 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`,
 
 ---
 
+### User Story 6 - Hosted MCP Server Container Image (Priority: P6)
+
+A platform team or individual developer wants to deploy the CGC MCP server as a
+long-running network service accessible to multiple AI assistants and IDE clients
+over HTTP — without requiring each client to spawn a local CGC process via stdio.
+They pull the official container image, configure Neo4j credentials and an API key
+via environment variables, and run it in Docker, Docker Swarm, or Kubernetes. The
+server exposes a streamable HTTP endpoint that any MCP-compatible client can connect
+to, with authentication and CORS handled at the application layer.
+
+**Why this priority**: The existing MCP server only supports stdio transport, meaning
+every client must run CGC as a child process. This limits deployment to local
+development machines and prevents shared team infrastructure, CI/CD integration, or
+cloud-hosted deployments. An HTTP transport with a production-ready container image
+enables all of these use cases and is the natural next step after the plugin system
+and sample apps are validated.
+
+**Independent Test**: Pull the published `cgc-mcp` image, run it with Neo4j
+credentials and an API key. Send an MCP `initialize` request via HTTP to the
+published endpoint. Verify the server responds with capabilities including all
+core and plugin tools. Send a `tools/call` request without an API key and verify
+it is rejected with 401. Deploy the same image to a Kubernetes pod and verify it
+passes readiness probes and serves MCP requests.
+
+**Acceptance Scenarios**:
+
+1. **Given** the `cgc-mcp` image is started with `DATABASE_TYPE`, `NEO4J_URI`,
+   `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `CGC_API_KEY` environment variables,
+   **When** a client sends an HTTP POST to `/mcp` with a valid `Authorization:
+   Bearer <key>` header, **Then** the server processes the MCP JSON-RPC request
+   and returns a valid response.
+2. **Given** the server is running, **When** a client sends a request without an
+   `Authorization` header or with an invalid key, **Then** the server responds
+   with HTTP 401 Unauthorized.
+3. **Given** the server is running, **When** a client sends an `initialize`
+   request, **Then** the response includes all core tools AND all plugin-contributed
+   tools (OTEL, Xdebug) in the capabilities.
+4. **Given** the server is running with plugins installed, **When** a client calls
+   `otel_list_services` via the HTTP endpoint, **Then** the server returns the
+   same results as the stdio transport would.
+5. **Given** the server is deployed in Kubernetes, **When** the readiness probe
+   fires, **Then** the `/healthz` endpoint returns HTTP 200 within 5 seconds.
+6. **Given** the server is running behind a reverse proxy or load balancer,
+   **When** a client sends a preflight CORS OPTIONS request, **Then** the server
+   responds with appropriate `Access-Control-Allow-*` headers.
+7. **Given** the stdio transport is still needed for local IDE integrations,
+   **When** `cgc mcp start` is run without `--transport`, **Then** the server
+   defaults to stdio mode (backwards compatible).
+
+---
+
 ### Edge Cases
 
 - What happens when a plugin depends on a specific graph schema version and the core has
@@ -216,6 +267,11 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`,
   CGC's static graph stores `Function` nodes (not `Method` nodes) without an `fqn`
   property? (Known gap — `CORRELATES_TO` and `RESOLVES_TO` edges will not form until
   FQN computation is added to the graph builder.)
+- What happens when the hosted MCP server receives concurrent requests from
+  multiple AI clients? Does the server handle request isolation correctly, or
+  can one client's long-running tool call block another?
+- How does the HTTP transport behave when the Neo4j database connection is lost
+  mid-request? Does `/healthz` correctly transition to unhealthy?
 
 ## Requirements *(mandatory)*
 
@@ -317,6 +373,33 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`,
   correlation gap) in `samples/KNOWN-LIMITATIONS.md` so that developers understand why
   `CORRELATES_TO` edges are absent and what future work will resolve it.
 
+**Hosted MCP Server**
+
+- **FR-039**: The MCP server MUST support a streamable HTTP transport in addition to
+  the existing stdio transport, selectable via a `--transport` CLI option (default:
+  `stdio` for backwards compatibility).
+- **FR-040**: The HTTP transport MUST expose a single endpoint (`/mcp`) that accepts
+  MCP JSON-RPC requests as HTTP POST bodies and returns JSON-RPC responses.
+- **FR-041**: The HTTP transport MUST support API key authentication via the
+  `Authorization: Bearer <key>` header, configured through the `CGC_API_KEY`
+  environment variable. Requests without a valid key MUST receive HTTP 401.
+- **FR-042**: The HTTP transport MUST expose a `/healthz` endpoint that returns
+  HTTP 200 when the server is ready to accept MCP requests and has a valid database
+  connection.
+- **FR-043**: The HTTP transport MUST handle CORS preflight requests and respond
+  with configurable `Access-Control-Allow-Origin` (via `CGC_CORS_ORIGIN` env var,
+  default: `*`).
+- **FR-044**: A dedicated `Dockerfile.mcp` MUST produce a container image that runs
+  the MCP server in HTTP transport mode as a long-running service, without requiring
+  Node.js, HAProxy, or any external protocol translation layer.
+- **FR-045**: The MCP container image MUST include all core tools and all installed
+  plugin tools (OTEL, Xdebug) in the tool listing returned by `tools/list`.
+- **FR-046**: The MCP container image MUST NOT embed credentials; all secrets
+  (database password, API key) MUST be provided at runtime via environment variables
+  or mounted files.
+- **FR-047**: The MCP container image MUST be deployable in Docker, Docker Swarm,
+  and Kubernetes without host-mode networking or privileged capabilities.
+
 ### Key Entities
 
 - **Plugin**: A self-contained, independently installable package that contributes CLI
@@ -365,9 +448,12 @@ nodes. `cgc otel list-services` returns `sample-php`, `sample-python`,
 - **SC-010**: All plugin service images run successfully in a Kubernetes environment
   using only standard Kubernetes primitives (Deployments, Services, ConfigMaps, Secrets).
 - **SC-011**: Running `bash samples/smoke-all.sh` after `docker compose up -d` in
-  `samples/` passes all smoke assertions (service_count >= 3, span and static node
-  presence, cross-service edges, trace links) within 120 seconds, with the `correlates_to`
+  `samples/` passes all smoke assertions within 120 seconds, with the `correlates_to`
   assertion producing WARN (not FAIL) due to the documented FQN gap.
+- **SC-012**: The `cgc-mcp` container image starts in under 15 seconds, passes its
+  `/healthz` check within 5 seconds of readiness, and correctly serves MCP `tools/list`
+  and `tools/call` requests over HTTP with API key authentication — validated by a
+  curl-based integration test against the running container.
 
 ## Assumptions
 

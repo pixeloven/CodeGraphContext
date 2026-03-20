@@ -172,17 +172,50 @@ def mcp_setup():
     configure_mcp_client()
 
 @mcp_app.command("start")
-def mcp_start():
+def mcp_start(
+    transport: str = typer.Option(
+        "stdio",
+        "--transport",
+        help="Transport mode: 'stdio' (default, for IDE integrations) or 'http' (JSON-RPC over HTTP).",
+        show_default=True,
+    ),
+):
     """
     Start the CodeGraphContext MCP server.
-    
-    Starts the server which listens for JSON-RPC requests from stdin.
-    This is used by IDE integrations (VS Code, Cursor, etc.).
+
+    Starts the server which listens for JSON-RPC requests from stdin (stdio
+    mode) or over HTTP (http mode).  stdio mode is used by IDE integrations
+    (VS Code, Cursor, etc.).  http mode listens on the port specified by the
+    CGC_MCP_PORT environment variable (default 8045).
     """
+    if transport not in ("stdio", "http"):
+        console.print(f"[bold red]Error:[/bold red] Unknown transport '{transport}'. Use 'stdio' or 'http'.")
+        raise typer.Exit(code=1)
+
     console.print("[bold green]Starting CodeGraphContext Server...[/bold green]")
     _load_credentials()
 
     server = None
+
+    if transport == "http":
+        port = int(os.environ.get("CGC_MCP_PORT", "8045"))
+        console.print(f"[bold cyan]HTTP transport — listening on port {port}[/bold cyan]")
+        try:
+            from codegraphcontext.http_transport import HTTPTransport
+            server = MCPServer()
+            http = HTTPTransport(server)
+            http.start(port=port)
+        except ValueError as e:
+            console.print(f"[bold red]Configuration Error:[/bold red] {e}")
+            console.print("Please run `cgc neo4j setup` or use FalkorDB (default).")
+        except KeyboardInterrupt:
+            console.print("\n[bold yellow]Server stopped by user.[/bold yellow]")
+        finally:
+            if server:
+                server.shutdown()
+        return
+
+    # --- stdio (default) ---
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:

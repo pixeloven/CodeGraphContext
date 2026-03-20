@@ -1,3 +1,12 @@
+/**
+ * Aggregates data from PHP and Python backend services.
+ *
+ * Uses Node's built-in `http` module so that OTEL HttpInstrumentation
+ * wraps these calls with CLIENT spans and injects W3C traceparent headers,
+ * producing `CALLS_SERVICE` edges in the CGC graph.
+ */
+import http from "http";
+
 const PHP_BACKEND =
   process.env.PHP_BACKEND_URL ?? "http://sample-php:8080";
 const PYTHON_BACKEND =
@@ -11,26 +20,25 @@ export interface DashboardResult {
   };
 }
 
+function httpGet(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    http.get(url, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => resolve(data));
+    }).on("error", reject);
+  });
+}
+
 export class DashboardService {
-  /**
-   * Aggregates data from both PHP and Python backends.
-   *
-   * Uses the global `fetch` (Node 18+). OTEL auto-instrumentation wraps
-   * these calls with CLIENT spans and injects W3C traceparent headers,
-   * producing `CALLS_SERVICE` edges in the CGC graph.
-   */
   async getDashboard(): Promise<DashboardResult> {
-    const [phpResponse, pythonResponse] = await Promise.all([
-      fetch(`${PHP_BACKEND}/api/orders`),
-      fetch(`${PYTHON_BACKEND}/api/orders`),
+    const [phpData, pythonData] = await Promise.all([
+      httpGet(`${PHP_BACKEND}/api/orders`),
+      httpGet(`${PYTHON_BACKEND}/api/orders`),
     ]);
 
-    const phpOrders = phpResponse.ok
-      ? ((await phpResponse.json()) as unknown[])
-      : [];
-    const pythonOrders = pythonResponse.ok
-      ? ((await pythonResponse.json()) as unknown[])
-      : [];
+    const phpOrders = JSON.parse(phpData) as unknown[];
+    const pythonOrders = JSON.parse(pythonData) as unknown[];
 
     return {
       orders: [...phpOrders, ...pythonOrders],

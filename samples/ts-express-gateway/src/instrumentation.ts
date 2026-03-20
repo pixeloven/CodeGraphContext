@@ -10,6 +10,8 @@ import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { Resource } from "@opentelemetry/resources";
 import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import type { Span } from "@opentelemetry/api";
+import type { ClientRequest } from "http";
 
 const endpoint =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://otel-collector:4318";
@@ -26,7 +28,21 @@ const sdk = new NodeSDK({
       // Disable fs instrumentation to reduce noise
       "@opentelemetry/instrumentation-fs": { enabled: false },
     }),
-    new HttpInstrumentation(),
+    new HttpInstrumentation({
+      requestHook: (span, request) => {
+        // Map target hostname to service name for CALLS_SERVICE edges
+        const req = request as ClientRequest;
+        const host = (req.getHeader?.("host") ?? "").toString();
+        const peerMap: Record<string, string> = {
+          "sample-php:8080": "sample-php",
+          "sample-python:8081": "sample-python",
+        };
+        const peer = peerMap[host];
+        if (peer) {
+          span.setAttribute("peer.service", peer);
+        }
+      },
+    }),
     new ExpressInstrumentation(),
   ],
 });

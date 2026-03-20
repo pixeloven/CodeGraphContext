@@ -69,6 +69,36 @@ services:
       - cgc-network
     restart: unless-stopped
 
+  # ── CGC hosted MCP server (HTTP transport) ────────────────────────────────
+  # Serves MCP over HTTP on port 8045 for remote clients (e.g. web IDEs,
+  # hosted agents).  Distinct from cgc-core which uses stdio for local IDEs.
+  cgc-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: cgc-mcp
+    environment:
+      - DATABASE_TYPE=${DATABASE_TYPE:-neo4j}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - CGC_CORS_ORIGIN=${CGC_CORS_ORIGIN:-*}
+      - CGC_MCP_PORT=${CGC_MCP_PORT:-8045}
+    ports:
+      - "${CGC_MCP_PORT:-8045}:8045"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8045/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   # ── OpenTelemetry Collector ────────────────────────────────────────────────
   # Receives spans from your application (ports 4317 gRPC, 4318 HTTP),
   # filters noise, and forwards to cgc-otel-processor.

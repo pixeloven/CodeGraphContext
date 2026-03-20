@@ -22,5 +22,13 @@
     "image": "cgc-plugin-xdebug",
     "health_check": "tcp_connect",
     "description": "Xdebug DBGp call-stack listener"
+  },
+  {
+    "name": "cgc-mcp",
+    "path": ".",
+    "dockerfile": "Dockerfile.mcp",
+    "image": "cgc-mcp",
+    "health_check": "http_get",
+    "description": "CGC hosted MCP server — HTTP transport with bundled plugins"
   }
 ]

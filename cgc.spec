@@ -5,7 +5,7 @@
 import sys
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all, collect_entry_point
 
 block_cipher = None
 
@@ -138,13 +138,46 @@ hidden_imports = [
     'httpx',
     'httpcore',
     'importlib',
+    'importlib.metadata',
+    'importlib.metadata._meta',
+    'importlib.metadata._adapters',
+    'importlib.metadata._itertools',
+    'importlib.metadata._functools',
+    'importlib.metadata._text',
     'asyncio',
     'pkg_resources',
+    'pkg_resources.extern',
     'threading',
     'subprocess',
     'socket',
     'atexit',
+    # plugin_registry.py discovers plugins via importlib.metadata.entry_points();
+    # each installed plugin's distribution metadata must be bundled so that
+    # entry_points(group=...) resolves correctly in a frozen executable.
+    'codegraphcontext.plugin_registry',
 ]
+
+# ── Plugin entry-point metadata collection ────────────────────────────────
+# PyInstaller cannot discover entry points at freeze time unless the
+# distribution METADATA / entry_points.txt files are explicitly copied into
+# the bundle.  collect_entry_point() returns (datas, hidden_imports) for
+# every distribution that declares the requested group.
+_plugin_ep_groups = ['cgc_cli_plugins', 'cgc_mcp_plugins']
+for _ep_group in _plugin_ep_groups:
+    try:
+        _ep_datas, _ep_hidden = collect_entry_point(_ep_group)
+        datas += _ep_datas
+        hidden_imports += _ep_hidden
+    except Exception as _ep_exc:
+        print(f"Warning: collect_entry_point('{_ep_group}') failed: {_ep_exc}")
+
+# Bundle the codegraphcontext distribution metadata so that
+# importlib.metadata.version("codegraphcontext") resolves in the frozen binary
+# and PluginRegistry._get_cgc_version() returns the correct version string.
+try:
+    datas += collect_data_files('codegraphcontext', includes=['**/*.dist-info/**/*'])
+except Exception as _cgc_meta_exc:
+    print(f"Warning: collect_data_files('codegraphcontext') failed: {_cgc_meta_exc}")
 
 
 # Bin extensions by platform
@@ -226,6 +259,44 @@ if not is_win:
         except Exception as e:
             print(f"Warning: collect_all failed for {pkg}: {e}")
 
+# ── falkordblite: explicit auditwheel-vendored shared library collection ──────
+# The Linux manylinux wheel ships shared libraries in a `falkordblite.libs/`
+# directory (placed by auditwheel alongside the importable packages).  This
+# directory is NOT a Python package (no __init__.py), so collect_all/
+# collect_dynamic_libs operating on top-level package names ('dummy',
+# 'redislite') will not find it.  We must explicitly scan for it and register
+# every .so* in it as a binary so the dynamic linker can resolve libcrypto,
+# libssl, and libgomp at runtime inside the frozen one-file executable.
+#
+# On macOS the equivalent vendored dylibs live in redislite/.dylibs/ and are
+# already captured by collect_all('falkordblite') above.  On Windows the
+# package is not installed (sys_platform != 'win32' marker), so this block
+# is also guarded.
+if not is_win:
+    for _sp in search_paths:
+        _fdb_libs = _sp / 'falkordblite.libs'
+        if _fdb_libs.exists():
+            for _lib in _fdb_libs.iterdir():
+                if _lib.is_file() and not _lib.suffix == '.py':
+                    print(f"Bundling falkordblite.libs: {_lib}")
+                    binaries.append((str(_lib), 'falkordblite.libs'))
+            break  # found; no need to check further paths
+
+# falkordblite ships a top-level 'dummy' C extension (dummy.cpython-*.so).
+# It is not an application import but must travel with the bundle as a
+# sentinel that pip/auditwheel attaches native build metadata to.
+# Collect it explicitly so PyInstaller does not silently drop it.
+if not is_win:
+    # 'dummy' may resolve to the stdlib dummy module; guard by only picking up
+    # the .so file that lives directly in a site-packages root (where auditwheel
+    # places it) rather than in any sub-package directory.
+    for _sp in search_paths:
+        for _dummy_so in _sp.glob('dummy.cpython-*.so'):
+            if _dummy_so.is_file():
+                print(f"Bundling falkordblite dummy extension: {_dummy_so}")
+                binaries.append((str(_dummy_so), '.'))
+                break
+
 # stdlibs: dynamically imports py3.py, py312.py, etc. via importlib
 stdlibs_dir = find_pkg_dir('stdlibs')
 if stdlibs_dir:
@@ -250,6 +321,10 @@ if tslp_dir:
 # Add redislite submodules to hidden imports
 hidden_imports += collect_submodules('redislite')
 hidden_imports += collect_submodules('falkordb')
+# falkordblite's top_level.txt declares 'dummy' and 'redislite'.
+# 'redislite' is covered above; add 'dummy' explicitly.
+if not is_win:
+    hidden_imports.append('dummy')
 
 # Add platform-specific watchers
 if is_win:
@@ -267,9 +342,9 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hidden_imports,
-    hookspath=[],
+    hookspath=['pyinstaller_hooks'],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['pyinstaller_hooks/rthook_importlib_metadata.py'],
     excludes=[
         'tkinter', '_tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy',
         'PIL', 'cv2', 'torch', 'tensorflow', 'jupyter', 'notebook', 'IPython',

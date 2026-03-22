@@ -1,0 +1,34 @@
+[
+  {
+    "name": "cgc-core",
+    "path": ".",
+    "dockerfile": "Dockerfile",
+    "image": "cgc-core",
+    "health_check": "version",
+    "description": "CodeGraphContext MCP server core"
+  },
+  {
+    "name": "cgc-plugin-otel",
+    "path": "plugins/cgc-plugin-otel",
+    "dockerfile": "Dockerfile",
+    "image": "cgc-plugin-otel",
+    "health_check": "grpc_ping",
+    "description": "OpenTelemetry span receiver and graph writer"
+  },
+  {
+    "name": "cgc-plugin-xdebug",
+    "path": "plugins/cgc-plugin-xdebug",
+    "dockerfile": "Dockerfile",
+    "image": "cgc-plugin-xdebug",
+    "health_check": "tcp_connect",
+    "description": "Xdebug DBGp call-stack listener"
+  },
+  {
+    "name": "cgc-mcp",
+    "path": ".",
+    "dockerfile": "Dockerfile.mcp",
+    "image": "cgc-mcp",
+    "health_check": "http_get",
+    "description": "CGC hosted MCP server — HTTP transport with bundled plugins"
+  }
+]

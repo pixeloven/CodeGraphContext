@@ -1,0 +1,38 @@
+# Development overlay — adds Xdebug DBGp listener service.
+#
+# Usage (with plugin stack — recommended):
+#   docker compose -f docker-compose.plugin-stack.yml -f docker-compose.dev.yml up -d
+#
+# Usage (with core template + neo4j profile):
+#   docker compose -f docker-compose.template.yml --profile neo4j -f docker-compose.dev.yml up -d
+#
+# IMPORTANT: The Xdebug listener only starts when CGC_PLUGIN_XDEBUG_ENABLED=true.
+# IMPORTANT: Requires neo4j service with a healthcheck (provided by docker-compose.plugin-stack.yml).
+
+version: '3.8'
+
+services:
+
+  # ── CGC Xdebug DBGp listener ──────────────────────────────────────────────
+  xdebug-listener:
+    build:
+      context: plugins/cgc-plugin-xdebug
+      dockerfile: Dockerfile
+    container_name: cgc-xdebug-listener
+    environment:
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-codegraph123}
+      - XDEBUG_LISTEN_HOST=${XDEBUG_LISTEN_HOST:-0.0.0.0}
+      - XDEBUG_LISTEN_PORT=${XDEBUG_LISTEN_PORT:-9003}
+      - XDEBUG_DEDUP_CACHE_SIZE=${XDEBUG_DEDUP_CACHE_SIZE:-10000}
+      - CGC_PLUGIN_XDEBUG_ENABLED=true
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+    ports:
+      - "9003:9003"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - cgc-network
+    restart: unless-stopped

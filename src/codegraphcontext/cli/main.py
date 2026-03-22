@@ -24,6 +24,7 @@ from importlib.metadata import version as pkg_version, PackageNotFoundError
 
 from codegraphcontext.server import MCPServer
 from codegraphcontext.core.database import DatabaseManager
+from codegraphcontext.plugin_registry import PluginRegistry
 from .setup_wizard import run_neo4j_setup_wizard, configure_mcp_client
 from . import config_manager
 # Import the new helper functions
@@ -102,6 +103,58 @@ def get_version() -> str:
 mcp_app = typer.Typer(help="MCP client configuration commands")
 app.add_typer(mcp_app, name="mcp")
 
+# ---------------------------------------------------------------------------
+# Plugin CLI integration
+# ---------------------------------------------------------------------------
+
+_plugin_registry: PluginRegistry | None = None
+
+plugin_app = typer.Typer(help="Manage CGC plugins.")
+app.add_typer(plugin_app, name="plugin")
+
+
+@plugin_app.command("list")
+def plugin_list():
+    """Show all loaded and failed plugins."""
+    global _plugin_registry
+    if _plugin_registry is None:
+        console.print("[yellow]Plugin registry not initialised.[/yellow]")
+        return
+
+    table = Table(title="CGC Plugins", box=box.SIMPLE)
+    table.add_column("Name", style="cyan")
+    table.add_column("Status", style="bold")
+    table.add_column("Version")
+    table.add_column("Tools / Command")
+    table.add_column("Reason", style="dim")
+
+    for name, info in _plugin_registry.loaded_plugins.items():
+        meta = info.get("metadata", {})
+        version = meta.get("version", "?")
+        tools = ", ".join(info.get("mcp_tools", []))
+        cmd = info.get("cli_command", "")
+        detail = tools or cmd or "—"
+        table.add_row(name, "[green]loaded[/green]", version, detail, "")
+
+    for name, reason in _plugin_registry.failed_plugins.items():
+        table.add_row(name, "[red]failed[/red]", "—", "—", reason)
+
+    console.print(table)
+
+
+def _load_plugin_cli_commands(registry: PluginRegistry) -> None:
+    """Attach plugin-contributed Typer command groups to the root app."""
+    global _plugin_registry
+    _plugin_registry = registry
+    for cmd_name, typer_app in registry.cli_commands:
+        app.add_typer(typer_app, name=cmd_name)
+
+
+# Discover and register plugin CLI commands at import time.
+_registry = PluginRegistry()
+_registry.discover_cli_plugins()
+_load_plugin_cli_commands(_registry)
+
 @mcp_app.command("setup")
 def mcp_setup():
     """
@@ -119,17 +172,50 @@ def mcp_setup():
     configure_mcp_client()
 
 @mcp_app.command("start")
-def mcp_start():
+def mcp_start(
+    transport: str = typer.Option(
+        "stdio",
+        "--transport",
+        help="Transport mode: 'stdio' (default, for IDE integrations) or 'http' (JSON-RPC over HTTP).",
+        show_default=True,
+    ),
+):
     """
     Start the CodeGraphContext MCP server.
-    
-    Starts the server which listens for JSON-RPC requests from stdin.
-    This is used by IDE integrations (VS Code, Cursor, etc.).
+
+    Starts the server which listens for JSON-RPC requests from stdin (stdio
+    mode) or over HTTP (http mode).  stdio mode is used by IDE integrations
+    (VS Code, Cursor, etc.).  http mode listens on the port specified by the
+    CGC_MCP_PORT environment variable (default 8045).
     """
+    if transport not in ("stdio", "http"):
+        console.print(f"[bold red]Error:[/bold red] Unknown transport '{transport}'. Use 'stdio' or 'http'.")
+        raise typer.Exit(code=1)
+
     console.print("[bold green]Starting CodeGraphContext Server...[/bold green]")
     _load_credentials()
 
     server = None
+
+    if transport == "http":
+        port = int(os.environ.get("CGC_MCP_PORT", "8045"))
+        console.print(f"[bold cyan]HTTP transport — listening on port {port}[/bold cyan]")
+        try:
+            from codegraphcontext.http_transport import HTTPTransport
+            server = MCPServer()
+            http = HTTPTransport(server)
+            http.start(port=port)
+        except ValueError as e:
+            console.print(f"[bold red]Configuration Error:[/bold red] {e}")
+            console.print("Please run `cgc neo4j setup` or use FalkorDB (default).")
+        except KeyboardInterrupt:
+            console.print("\n[bold yellow]Server stopped by user.[/bold yellow]")
+        finally:
+            if server:
+                server.shutdown()
+        return
+
+    # --- stdio (default) ---
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:

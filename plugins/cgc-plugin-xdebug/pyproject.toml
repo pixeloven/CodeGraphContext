@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cgc-plugin-xdebug"
+version = "0.1.0"
+description = "Xdebug DBGp listener plugin for CodeGraphContext (dev/staging only)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "CodeGraphContext Contributors" }
+]
+dependencies = [
+    "codegraphcontext>=0.3.0",
+    "typer[all]>=0.9.0",
+    "neo4j>=5.15.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.11.0",
+]
+
+[project.entry-points."cgc_cli_plugins"]
+xdebug = "cgc_plugin_xdebug"
+
+[project.entry-points."cgc_mcp_plugins"]
+xdebug = "cgc_plugin_xdebug"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cgc_plugin_xdebug*"]

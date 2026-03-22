@@ -1,0 +1,84 @@
+name: Plugin Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+      - 'src/codegraphcontext/plugin_registry.py'
+      - 'tests/unit/plugin/**'
+      - 'tests/integration/plugin/**'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+      - 'src/codegraphcontext/plugin_registry.py'
+  workflow_dispatch:
+
+jobs:
+  plugin-unit-tests:
+    name: Plugin unit + integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install core CGC (no extras) and dev dependencies
+        run: |
+          pip install --no-cache-dir packaging pytest pytest-mock
+          pip install --no-cache-dir -e ".[dev]"
+
+      - name: Install stub plugin (editable)
+        run: pip install --no-cache-dir -e plugins/cgc-plugin-stub
+
+      - name: Run plugin unit tests
+        env:
+          PYTHONPATH: src
+        run: pytest tests/unit/plugin/ -v --tb=short
+
+      - name: Run plugin integration tests
+        env:
+          PYTHONPATH: src
+        run: pytest tests/integration/plugin/ -v --tb=short
+
+  plugin-import-check:
+    name: Verify plugin packages import cleanly
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        plugin: [cgc-plugin-stub, cgc-plugin-otel, cgc-plugin-xdebug]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install plugin
+        run: |
+          pip install --no-cache-dir typer neo4j packaging || true
+          pip install --no-cache-dir -e plugins/${{ matrix.plugin }} || true
+
+      - name: Check plugin PLUGIN_METADATA
+        env:
+          PYTHONPATH: src
+        run: |
+          PLUGIN_MOD=$(echo "${{ matrix.plugin }}" | tr '-' '_')
+          python -c "
+          import importlib
+          mod = importlib.import_module('${PLUGIN_MOD}')
+          meta = getattr(mod, 'PLUGIN_METADATA', None)
+          assert meta is not None, 'PLUGIN_METADATA missing'
+          for field in ('name', 'version', 'cgc_version_constraint', 'description'):
+              assert field in meta, f'PLUGIN_METADATA missing field: {field}'
+          print(f'✅ ${PLUGIN_MOD} PLUGIN_METADATA OK: {meta[\"name\"]} v{meta[\"version\"]}')
+          "

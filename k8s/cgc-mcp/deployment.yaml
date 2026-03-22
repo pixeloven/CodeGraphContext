@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cgc-mcp
+  labels:
+    app: cgc-mcp
+    app.kubernetes.io/part-of: codegraphcontext
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cgc-mcp
+  template:
+    metadata:
+      labels:
+        app: cgc-mcp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: cgc-mcp
+          image: ghcr.io/codegraphcontext/cgc-mcp:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http-mcp
+              containerPort: 8045
+              protocol: TCP
+          env:
+            - name: DATABASE_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: cgc-config
+                  key: DATABASE_TYPE
+            - name: NEO4J_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: cgc-config
+                  key: NEO4J_URI
+            - name: NEO4J_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cgc-config
+                  key: NEO4J_USERNAME
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cgc-secrets
+                  key: NEO4J_PASSWORD
+            - name: CGC_MCP_PORT
+              value: "8045"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http-mcp
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http-mcp
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

@@ -32,6 +32,7 @@ from .tools.handlers import (
     query_handlers,
     watcher_handlers
 )
+from .plugin_registry import PluginRegistry
 
 DEFAULT_EDIT_DISTANCE = 2
 DEFAULT_FUZZY_SEARCH = False
@@ -86,9 +87,33 @@ class MCPServer:
 
     def _init_tools(self):
         """
-        Defines the complete tool manifest for the LLM.
+        Defines the complete tool manifest for the LLM, including plugin tools.
         """
-        self.tools = TOOLS
+        self.tools = dict(TOOLS)  # mutable copy
+
+        server_context = {
+            "db_manager": self.db_manager,
+            "version": self._get_version(),
+        }
+
+        plugin_registry = PluginRegistry()
+        plugin_registry.discover_mcp_plugins(server_context)
+
+        self.plugin_tool_handlers: Dict[str, Any] = {}
+        for tool_name, tool_def in plugin_registry.mcp_tools.items():
+            if tool_name in self.tools:
+                continue  # built-in tools take precedence
+            self.tools[tool_name] = tool_def
+            if tool_name in plugin_registry.mcp_handlers:
+                self.plugin_tool_handlers[tool_name] = plugin_registry.mcp_handlers[tool_name]
+
+    @staticmethod
+    def _get_version() -> str:
+        try:
+            from importlib.metadata import version
+            return version("codegraphcontext")
+        except Exception:
+            return "0.0.0"
 
     def get_database_status(self) -> dict:
         """Returns the current connection status of the Neo4j database."""
@@ -204,8 +229,75 @@ class MCPServer:
             # Run the synchronous tool function in a separate thread to avoid
             # blocking the main asyncio event loop.
             return await asyncio.to_thread(handler, **args)
+
+        # Fall through to plugin handlers
+        plugin_handler = self.plugin_tool_handlers.get(tool_name)
+        if plugin_handler:
+            return await asyncio.to_thread(plugin_handler, **args)
+
+        return {"error": f"Unknown tool: {tool_name}"}
+
+    async def handle_request(
+        self,
+        method: str,
+        params: Dict[str, Any],
+        request_id: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """Routes a single JSON-RPC request and returns the response dict.
+
+        Returns ``None`` for notification methods that require no response
+        (e.g. ``notifications/initialized``).
+
+        Args:
+            method: The JSON-RPC method name.
+            params: The ``params`` field of the request (may be empty dict).
+            request_id: The ``id`` field of the request, or ``None`` for
+                notifications.
+
+        Returns:
+            A JSON-RPC response dict, or ``None`` when no response is needed.
+        """
+        if method == 'initialize':
+            return {
+                "jsonrpc": "2.0", "id": request_id,
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "serverInfo": {
+                        "name": "CodeGraphContext", "version": "0.1.0",
+                        "systemPrompt": LLM_SYSTEM_PROMPT
+                    },
+                    "capabilities": {"tools": {"listTools": True}},
+                }
+            }
+        elif method == 'tools/list':
+            return {
+                "jsonrpc": "2.0", "id": request_id,
+                "result": {"tools": list(self.tools.values())}
+            }
+        elif method == 'tools/call':
+            tool_name = params.get('name')
+            args = params.get('arguments', {})
+            result = await self.handle_tool_call(tool_name, args)
+
+            if "error" in result:
+                return {
+                    "jsonrpc": "2.0", "id": request_id,
+                    "error": {"code": -32000, "message": "Tool execution error", "data": result}
+                }
+            return {
+                "jsonrpc": "2.0", "id": request_id,
+                "result": {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
+            }
+        elif method == 'notifications/initialized':
+            # Notification — no response needed.
+            return None
         else:
-            return {"error": f"Unknown tool: {tool_name}"}
+            if request_id is not None:
+                return {
+                    "jsonrpc": "2.0", "id": request_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"}
+                }
+            return None
 
     async def run(self):
         """
@@ -214,7 +306,7 @@ class MCPServer:
         # info_logger("MCP Server is running. Waiting for requests...")
         print("MCP Server is running. Waiting for requests...", file=sys.stderr, flush=True)
         self.code_watcher.start()
-        
+
         loop = asyncio.get_event_loop()
         while True:
             try:
@@ -223,59 +315,14 @@ class MCPServer:
                 if not line:
                     debug_logger("Client disconnected (EOF received). Shutting down.")
                     break
-                
+
                 request = json.loads(line.strip())
                 method = request.get('method')
                 params = request.get('params', {})
                 request_id = request.get('id')
-                
-                response = {}
-                # Route the request based on the JSON-RPC method.
-                if method == 'initialize':
-                    response = {
-                        "jsonrpc": "2.0", "id": request_id,
-                        "result": {
-                            "protocolVersion": "2025-03-26",
-                            "serverInfo": {
-                                "name": "CodeGraphContext", "version": "0.1.0",
-                                "systemPrompt": LLM_SYSTEM_PROMPT
-                            },
-                            "capabilities": {"tools": {"listTools": True}},
-                        }
-                    }
-                elif method == 'tools/list':
-                    # Return the list of tools defined in _init_tools.
-                    response = {
-                        "jsonrpc": "2.0", "id": request_id,
-                        "result": {"tools": list(self.tools.values())}
-                    }
-                elif method == 'tools/call':
-                    # Execute a tool call and return the result.
-                    tool_name = params.get('name')
-                    args = params.get('arguments', {})
-                    result = await self.handle_tool_call(tool_name, args)
-                    
-                    if "error" in result:
-                        response = {
-                            "jsonrpc": "2.0", "id": request_id,
-                            "error": {"code": -32000, "message": "Tool execution error", "data": result}
-                        }
-                    else:
-                        response = {
-                            "jsonrpc": "2.0", "id": request_id,
-                            "result": {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}
-                        }
-                elif method == 'notifications/initialized':
-                    # This is a notification, no response needed.
-                    pass
-                else:
-                    # Handle unknown methods.
-                    if request_id is not None:
-                        response = {
-                            "jsonrpc": "2.0", "id": request_id,
-                            "error": {"code": -32601, "message": f"Method not found: {method}"}
-                        }
-                
+
+                response = await self.handle_request(method, params, request_id)
+
                 # Send the response to standard output if it's not a notification.
                 if request_id is not None and response:
                     print(json.dumps(response), flush=True)

@@ -101,6 +101,13 @@ class GraphBuilder:
         self.job_manager = job_manager
         self.loop = loop
         self.driver = self.db_manager.get_driver()
+        # TODO (Fix 3 – graceful degradation): Wrap each TreeSitterParser(...)
+        # construction in a try/except so that a single unavailable grammar
+        # (e.g. a future language whose package isn't installed) doesn't crash
+        # the entire GraphBuilder.  Suggested approach: extract a
+        # _make_parser_safe(lang) helper that logs a warning and returns None
+        # on failure, then filter None values out of self.parsers.
+        # See: https://github.com/Shashankss1205/CodeGraphContext/issues
         self.parsers = {
             '.py': TreeSitterParser('python'),
             '.ipynb': TreeSitterParser('python'),

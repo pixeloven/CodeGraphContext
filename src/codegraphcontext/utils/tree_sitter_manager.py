@@ -128,22 +128,37 @@ class TreeSitterManager:
                 return self._language_cache[canonical_name]
             
             try:
-                # Special handling for C# which is available as tree_sitter_c_sharp
+                # tree-sitter-language-pack changed its C# key across major versions:
+                #   0.x (>=0.13.0): uses "csharp"  (delegates to tree-sitter-c-sharp pkg)
+                #   1.x:            uses "c_sharp"  (native binary, no separate pkg)
+                # Try both names so the loader is version-agnostic.
+                # All other languages use a stable name matching our canonical form.
                 if canonical_name == "c_sharp":
-                    import tree_sitter_c_sharp
-                    # tree_sitter_c_sharp.language() returns a PyCapsule, wrap it in Language
-                    capsule = tree_sitter_c_sharp.language()
-                    language = Language(capsule)
+                    for pack_name in ("c_sharp", "csharp"):
+                        try:
+                            language = get_language(pack_name)
+                            break
+                        except Exception:
+                            continue
+                    else:
+                        raise ValueError(
+                            "Language 'c_sharp' (C#) is not available. "
+                            "Ensure tree-sitter-language-pack>=0.13.0 is installed "
+                            "(earlier versions do not ship the C# grammar)."
+                        )
                 else:
                     # Load the language from tree-sitter-language-pack
                     language = get_language(canonical_name)
-                
+
                 self._language_cache[canonical_name] = language
                 return language
-            except (KeyError, ModuleNotFoundError):
+            except ValueError:
+                raise  # pass through ValueError unchanged (ours or pack's LanguageNotFoundError)
+            except (KeyError, LookupError, ModuleNotFoundError) as e:
                 raise ValueError(
-                    f"Language '{canonical_name}' is not available in tree-sitter-language-pack. "
-                    f"This may be due to a missing or experimental grammar."
+                    f"Language '{canonical_name}' is not available. "
+                    f"Ensure tree-sitter-language-pack>=0.13.0 is installed. "
+                    f"Error: {e}"
                 )
             except Exception as e:
                 raise Exception(

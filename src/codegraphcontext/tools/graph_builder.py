@@ -101,39 +101,53 @@ class GraphBuilder:
         self.job_manager = job_manager
         self.loop = loop
         self.driver = self.db_manager.get_driver()
-        self.parsers = {
-            '.py': TreeSitterParser('python'),
-            '.ipynb': TreeSitterParser('python'),
-            '.js': TreeSitterParser('javascript'),
-            '.jsx': TreeSitterParser('javascript'),
-            '.mjs': TreeSitterParser('javascript'),
-            '.cjs': TreeSitterParser('javascript'),
-            '.go': TreeSitterParser('go'),
-            '.ts': TreeSitterParser('typescript'),
-            '.tsx': TreeSitterParser('typescript'),
-            '.cpp': TreeSitterParser('cpp'),
-            '.h': TreeSitterParser('cpp'),
-            '.hpp': TreeSitterParser('cpp'),
-            '.hh': TreeSitterParser('cpp'),
-            '.rs': TreeSitterParser('rust'),
-            '.c': TreeSitterParser('c'),
-            # '.h': TreeSitterParser('c'), # Need to write an algo for distinguishing C vs C++ headers
-            '.java': TreeSitterParser('java'),
-            '.rb': TreeSitterParser('ruby'),
-            '.cs': TreeSitterParser('c_sharp'),
-            '.php': TreeSitterParser('php'),
-            '.kt': TreeSitterParser('kotlin'),
-            '.scala': TreeSitterParser('scala'),
-            '.sc': TreeSitterParser('scala'),
-            '.swift': TreeSitterParser('swift'),
-            '.hs': TreeSitterParser('haskell'),
-            '.dart': TreeSitterParser('dart'),
-            '.pl': TreeSitterParser('perl'),
-            '.pm': TreeSitterParser('perl'),
-            '.ex': TreeSitterParser('elixir'),
-            '.exs': TreeSitterParser('elixir'),
+        raw_parsers = {
+            '.py': 'python',
+            '.ipynb': 'python',
+            '.js': 'javascript',
+            '.jsx': 'javascript',
+            '.mjs': 'javascript',
+            '.cjs': 'javascript',
+            '.go': 'go',
+            '.ts': 'typescript',
+            '.tsx': 'typescript',
+            '.cpp': 'cpp',
+            '.h': 'cpp',
+            '.hpp': 'cpp',
+            '.hh': 'cpp',
+            '.rs': 'rust',
+            '.c': 'c',
+            # '.h': 'c', # Need to write an algo for distinguishing C vs C++ headers
+            '.java': 'java',
+            '.rb': 'ruby',
+            '.cs': 'c_sharp',
+            '.php': 'php',
+            '.kt': 'kotlin',
+            '.scala': 'scala',
+            '.sc': 'scala',
+            '.swift': 'swift',
+            '.hs': 'haskell',
+            '.dart': 'dart',
+            '.pl': 'perl',
+            '.pm': 'perl',
+            '.ex': 'elixir',
+            '.exs': 'elixir',
         }
+        self.parsers = {}
+        for ext, lang in raw_parsers.items():
+            parser = self._make_parser_safe(lang)
+            if parser is not None:
+                self.parsers[ext] = parser
         self.create_schema()
+
+    @staticmethod
+    def _make_parser_safe(lang: str) -> Optional['TreeSitterParser']:
+        """Try to construct a TreeSitterParser for *lang*, returning None on failure."""
+        try:
+            return TreeSitterParser(lang)
+        except Exception as e:
+            warning_logger(f"Skipping parser for '{lang}': {e}")
+            return None
 
     # A general schema creation based on common features across languages
     def create_schema(self):
